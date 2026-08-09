@@ -2,7 +2,7 @@
 
 A native macOS menu-bar utility with a draggable red panda that lives on your desktop, reacts when you finish work, and keeps local tasks, reminders, and daily habits. Local-first: no account, no network, no cloud.
 
-**Status:** pre-implementation. [`Plan.md`](Plan.md) is the spec; the Xcode project does not exist yet (issue #1).
+**Status:** early implementation. The app shell builds and runs as a menu-bar agent; features are tracked in the issue list. [`Plan.md`](Plan.md) is the spec.
 
 ## Requirements
 
@@ -14,10 +14,17 @@ A native macOS menu-bar utility with a draggable red panda that lives on your de
 ```bash
 git clone https://github.com/harshalwasnik22/PetCompanion.git
 cd PetCompanion
-open PetCompanion.xcodeproj   # once issue #1 lands
+open PetCompanion.xcodeproj
 ```
 
-Until issue #1 is merged there is nothing to build. Read `Plan.md` first — it defines every model, manager, and acceptance criterion, and the issue list maps 1:1 to §11.
+Or from the command line:
+
+```bash
+xcodebuild build -scheme PetCompanion -destination 'platform=macOS'
+xcodebuild test  -scheme PetCompanion -destination 'platform=macOS'
+```
+
+Read `Plan.md` before your first issue — it defines every model, manager, and acceptance criterion, and the issue list maps 1:1 to §11.
 
 ## What it does
 
@@ -36,7 +43,8 @@ The task model is named `TaskItem`, not `Task`, so it does not shadow Swift's co
 
 ## Known limitations
 
-- **Notifications need a signed bundle.** They work on a development Mac through Xcode's local signing. Copying an unsigned build to another Mac is not a supported path for reminders.
+- **Notifications need a signed bundle.** The project currently builds ad-hoc signed with no team, which is fine for everything up to Milestone 3. Before starting the reminder work (#13), set `DEVELOPMENT_TEAM` to your personal Apple ID team, or `UNUserNotificationCenter` registration will not behave. Copying an unsigned build to another Mac is not a supported path for reminders either way.
+- **Built against the macOS 26.5 SDK with a 15.0 deployment target.** The compiler enforces API availability against 15.0, but nothing is runtime-tested on macOS 15 itself.
 - No sandbox, no notarization, no auto-update. This is a local/portfolio build.
 - Pet art starts as state-named placeholders (`redpanda-idle`, `redpanda-happy`, …); final art drops in without code changes.
 
