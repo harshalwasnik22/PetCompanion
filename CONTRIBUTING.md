@@ -16,9 +16,12 @@ Two people are working on this simultaneously. These rules exist to stop us from
 
 **Use Xcode 16 buildable folders (synchronized folder references).** Each top-level folder from `Plan.md` §15 is added to the project *once* as a buildable folder. After that, creating a file inside it adds it to the build for everyone with **no `project.pbxproj` change at all**. This is the single most important convention here — it turns the usual constant conflict into a rare one.
 
+The synchronized root group is `PetCompanion/` itself, so **any subfolder you create inside it is picked up automatically**. Don't pre-create empty folders for structure — make `Features/Tasks/` when you write the first file that belongs there. Plan §15 documents the agreed layout; follow it so we don't invent two names for the same thing.
+
 Practical rules:
 
 - Put new source files in an existing buildable folder. Do not drag files into the project navigator in a way that creates individual file references.
+- **Any non-source file in the folder gets copied into the app bundle's `Resources/`.** Two files with the same name in different subfolders (classically `.gitkeep`) collide with "Multiple commands produce …" and fail the build. Keep stray files out of `PetCompanion/`; scratch files belong outside the target folder or in `.gitignore`.
 - Adding a *new top-level folder*, a target, a build setting, or a capability does touch `project.pbxproj`. Say so in the issue or in chat before you do it, so the other person can rebase rather than collide.
 - **Never commit `xcuserdata/`.** It is gitignored; if it shows up in `git status`, something added it deliberately — don't.
 - Schemes must be **shared** (Xcode → Manage Schemes → Shared) so they live in `xcshareddata` and both of us get them.
