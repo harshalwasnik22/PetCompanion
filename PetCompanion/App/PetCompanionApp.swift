@@ -14,21 +14,24 @@ struct PetCompanionApp: App {
 
     var body: some Scene {
         MenuBarExtra("Pet Companion", systemImage: "pawprint.fill") {
-            backedByStore {
-                StatusMenuView(overlayManager: appDelegate.overlayManager)
+            backedByStore { container in
+                StatusMenuView(
+                    overlayManager: appDelegate.overlayManager,
+                    quickCaptureController: appDelegate.quickCaptureController(for: container)
+                )
             }
         }
         .menuBarExtraStyle(.window)
 
         Window("Tasks", id: AppWindow.tasks.id) {
-            backedByStore {
+            backedByStore { _ in
                 TaskListView()
             }
         }
         .defaultSize(width: 480, height: 360)
 
         Window("Habits", id: AppWindow.habits.id) {
-            backedByStore {
+            backedByStore { _ in
                 PlaceholderDestinationView(
                     title: "Habits",
                     message: "Daily habits will appear here in the next milestone."
@@ -38,7 +41,7 @@ struct PetCompanionApp: App {
         .defaultSize(width: 480, height: 360)
 
         Window("Settings", id: AppWindow.settings.id) {
-            backedByStore {
+            backedByStore { _ in
                 PlaceholderDestinationView(
                     title: "Settings",
                     message: "Pet and notification preferences will appear here in a later milestone."
@@ -48,10 +51,9 @@ struct PetCompanionApp: App {
         .defaultSize(width: 480, height: 360)
 
         Window("Quick Capture", id: AppWindow.quickCapture.id) {
-            backedByStore {
-                PlaceholderDestinationView(
-                    title: "Quick Capture",
-                    message: "Focused task capture will appear here in a later milestone."
+            backedByStore { container in
+                QuickCaptureWindowFallback(
+                    quickCaptureController: appDelegate.quickCaptureController(for: container)
                 )
             }
         }
@@ -61,10 +63,12 @@ struct PetCompanionApp: App {
     /// Puts the model container in the environment, or replaces the content with
     /// recovery information when the store could not be opened.
     @ViewBuilder
-    private func backedByStore(@ViewBuilder _ content: () -> some View) -> some View {
+    private func backedByStore<Content: View>(
+        @ViewBuilder _ content: (ModelContainer) -> Content
+    ) -> some View {
         switch store {
         case .success(let container):
-            content().modelContainer(container)
+            content(container).modelContainer(container)
         case .failure(let error):
             StorageRecoveryView(error: error)
         }
@@ -74,8 +78,23 @@ struct PetCompanionApp: App {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let overlayManager = PetOverlayManager()
+    private var captureController: QuickCaptureController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         overlayManager.start()
+    }
+
+    func quickCaptureController(for modelContainer: ModelContainer) -> QuickCaptureController {
+        if let captureController { return captureController }
+
+        let controller = QuickCaptureController(
+            modelContainer: modelContainer,
+            overlayManager: overlayManager
+        )
+        overlayManager.onPetClicked = { [weak controller] in
+            controller?.show()
+        }
+        captureController = controller
+        return controller
     }
 }
