@@ -46,7 +46,9 @@ struct PetCompanionApp: App {
             backedByStore { _ in
                 SettingsView(
                     hotkeyManager: appDelegate.hotkeyManager,
-                    appSettings: appDelegate.appSettings
+                    appSettings: appDelegate.appSettings,
+                    overlayManager: appDelegate.overlayManager,
+                    notificationManager: appDelegate.notificationManager
                 )
             }
         }
@@ -110,6 +112,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.reactionEngine = reactionEngine
         self.notificationManager = NotificationManager(taskManager: taskManager)
         super.init()
+        overlayManager.configure(
+            reactionEngine: reactionEngine,
+            petName: appSettings.petName,
+            showInFullScreen: appSettings.showPetInFullScreen
+        )
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
