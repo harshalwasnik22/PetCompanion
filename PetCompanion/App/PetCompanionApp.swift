@@ -44,10 +44,7 @@ struct PetCompanionApp: App {
 
         Window("Settings", id: AppWindow.settings.id) {
             backedByStore { _ in
-                PlaceholderDestinationView(
-                    title: "Settings",
-                    message: "Pet and notification preferences will appear here in a later milestone."
-                )
+                HotkeyStatusView(hotkeyManager: appDelegate.hotkeyManager)
             }
         }
         .defaultSize(width: 480, height: 360)
@@ -90,6 +87,7 @@ struct PetCompanionApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let store: Result<ModelContainer, Swift.Error>
     let overlayManager = PetOverlayManager()
+    let hotkeyManager = HotkeyManager()
     private var captureController: QuickCaptureController?
     let reactionEngine: PetReactionEngine
     let notificationManager: NotificationManager
@@ -113,6 +111,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         notificationManager.registerCategory()
         overlayManager.start()
+        if case .success(let container) = store {
+            _ = quickCaptureController(for: container)
+        }
     }
 
     func quickCaptureController(for modelContainer: ModelContainer) -> QuickCaptureController {
@@ -128,6 +129,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             controller?.show()
         }
         captureController = controller
+        hotkeyManager.register { [weak controller] in
+            controller?.show()
+        }
         return controller
     }
 }
