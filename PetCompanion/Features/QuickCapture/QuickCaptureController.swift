@@ -8,17 +8,26 @@ final class QuickCaptureController {
 
     private let modelContainer: ModelContainer
     private let overlayManager: PetOverlayManager
+    private let reactionEngine: PetReactionEngine
     private var panel: NSPanel?
 
-    init(modelContainer: ModelContainer, overlayManager: PetOverlayManager) {
+    init(
+        modelContainer: ModelContainer,
+        overlayManager: PetOverlayManager,
+        reactionEngine: PetReactionEngine
+    ) {
         self.modelContainer = modelContainer
         self.overlayManager = overlayManager
+        self.reactionEngine = reactionEngine
     }
 
     func show() {
         let panel = makePanelIfNeeded()
+        // The panel hosts SwiftUI outside the scene graph, so it gets no
+        // environment from the app. Everything it needs is handed over here.
         panel.contentView = NSHostingView(
             rootView: QuickCaptureView(
+                reactionEngine: reactionEngine,
                 onCancel: { [weak self] in self?.dismiss() },
                 onSaved: { [weak self] in self?.dismiss() }
             )
@@ -68,6 +77,7 @@ enum QuickCaptureGeometry {
 @MainActor
 private struct QuickCaptureView: View {
     @Environment(\.modelContext) private var modelContext
+    let reactionEngine: PetReactionEngine
     @FocusState private var titleIsFocused: Bool
 
     let onCancel: () -> Void
@@ -141,7 +151,7 @@ private struct QuickCaptureView: View {
     private func save() {
         guard input.validatedTitle != nil else { return }
         do {
-            try TaskManager(modelContext: modelContext).create(
+            try TaskManager(modelContext: modelContext, reactionEngine: reactionEngine).create(
                 title: title,
                 notes: notes,
                 dueAt: hasDueDate ? dueAt : nil,

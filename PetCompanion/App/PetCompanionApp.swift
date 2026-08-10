@@ -75,7 +75,7 @@ struct PetCompanionApp: App {
     ) -> some View {
         switch store {
         case .success(let container):
-            content()
+            content(container)
                 .modelContainer(container)
                 .environment(appDelegate.reactionEngine)
         case .failure(let error):
@@ -99,7 +99,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let controller = QuickCaptureController(
             modelContainer: modelContainer,
-            overlayManager: overlayManager
+            overlayManager: overlayManager,
+            reactionEngine: reactionEngine
         )
         overlayManager.onPetClicked = { [weak controller] in
             controller?.show()
