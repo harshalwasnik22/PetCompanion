@@ -1,4 +1,5 @@
 import AppKit
+import SwiftData
 import SwiftUI
 
 @main
@@ -6,43 +7,70 @@ import SwiftUI
 struct PetCompanionApp: App {
     @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
 
+    /// Opened once at launch. A failure is carried rather than thrown so the app
+    /// can explain itself instead of crashing, and so nothing silently falls back
+    /// to a throwaway in-memory store that would accept saves and lose them.
+    private let store = Result { try AppModelContainer.make() }
+
     var body: some Scene {
         MenuBarExtra("Pet Companion", systemImage: "pawprint.fill") {
-            StatusMenuView(overlayManager: appDelegate.overlayManager)
+            backedByStore {
+                StatusMenuView(overlayManager: appDelegate.overlayManager)
+            }
         }
         .menuBarExtraStyle(.window)
 
         Window("Tasks", id: AppWindow.tasks.id) {
-            PlaceholderDestinationView(
-                title: "Tasks",
-                message: "Task management will appear here in the next milestone."
-            )
+            backedByStore {
+                PlaceholderDestinationView(
+                    title: "Tasks",
+                    message: "Task management will appear here in the next milestone."
+                )
+            }
         }
         .defaultSize(width: 480, height: 360)
 
         Window("Habits", id: AppWindow.habits.id) {
-            PlaceholderDestinationView(
-                title: "Habits",
-                message: "Daily habits will appear here in the next milestone."
-            )
+            backedByStore {
+                PlaceholderDestinationView(
+                    title: "Habits",
+                    message: "Daily habits will appear here in the next milestone."
+                )
+            }
         }
         .defaultSize(width: 480, height: 360)
 
         Window("Settings", id: AppWindow.settings.id) {
-            PlaceholderDestinationView(
-                title: "Settings",
-                message: "Pet and notification preferences will appear here in a later milestone."
-            )
+            backedByStore {
+                PlaceholderDestinationView(
+                    title: "Settings",
+                    message: "Pet and notification preferences will appear here in a later milestone."
+                )
+            }
         }
         .defaultSize(width: 480, height: 360)
 
         Window("Quick Capture", id: AppWindow.quickCapture.id) {
-            PlaceholderDestinationView(
-                title: "Quick Capture",
-                message: "Focused task capture will appear here in a later milestone."
-            )
+            backedByStore {
+                PlaceholderDestinationView(
+                    title: "Quick Capture",
+                    message: "Focused task capture will appear here in a later milestone."
+                )
+            }
         }
         .defaultSize(width: 320, height: 220)
+    }
+
+    /// Puts the model container in the environment, or replaces the content with
+    /// recovery information when the store could not be opened.
+    @ViewBuilder
+    private func backedByStore(@ViewBuilder _ content: () -> some View) -> some View {
+        switch store {
+        case .success(let container):
+            content().modelContainer(container)
+        case .failure(let error):
+            StorageRecoveryView(error: error)
+        }
     }
 }
 
