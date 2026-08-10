@@ -17,10 +17,16 @@ final class TaskManager {
 
     private let modelContext: ModelContext
     private let reactionEngine: PetReactionEngine
+    private let notificationManager: NotificationManager?
 
-    init(modelContext: ModelContext, reactionEngine: PetReactionEngine) {
+    init(
+        modelContext: ModelContext,
+        reactionEngine: PetReactionEngine,
+        notificationManager: NotificationManager? = nil
+    ) {
         self.modelContext = modelContext
         self.reactionEngine = reactionEngine
+        self.notificationManager = notificationManager
     }
 
     func create(title: String, notes: String, dueAt: Date?, reminderAt: Date?, now: Date = .now) throws {
@@ -34,6 +40,7 @@ final class TaskManager {
         ))
         try save()
         reactionEngine.show(event: .onTaskAdded)
+        if reminderAt != nil { notificationManager?.requestAuthorizationForReminder() }
     }
 
     func update(
@@ -54,6 +61,7 @@ final class TaskManager {
         task.dueAt = dueAt
         task.reminderAt = reminderAt
         try save()
+        if reminderAt != nil { notificationManager?.requestAuthorizationForReminder() }
     }
 
     func complete(_ task: TaskItem) throws {
@@ -62,6 +70,12 @@ final class TaskManager {
         task.completedAt = .now
         try save()
         reactionEngine.show(event: .onTaskCompleted)
+    }
+
+    func complete(id: UUID) throws {
+        let descriptor = FetchDescriptor<TaskItem>(predicate: #Predicate { $0.id == id })
+        guard let task = try modelContext.fetch(descriptor).first else { return }
+        try complete(task)
     }
 
     func delete(_ task: TaskItem) throws {

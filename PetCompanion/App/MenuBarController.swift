@@ -26,6 +26,33 @@ final class MenuBarController {
     }
 }
 
+/// The menu-bar item's label, which doubles as the place where the notification
+/// manager gets its window-opening callback.
+///
+/// `openWindow` is only reachable from a `View`, and this label is the one view
+/// that exists for the whole life of the app — the popover's contents only exist
+/// while it is open, so wiring from there would leave "Open Task" dead until the
+/// user happened to click the menu bar first.
+///
+/// `.labelStyle(.iconOnly)` keeps the status item to the paw glyph while leaving
+/// the title for VoiceOver; without it the menu bar renders the text as well.
+@MainActor
+struct NotificationMenuBarLabel: View {
+    @Environment(\.openWindow) private var openWindow
+    let notificationManager: NotificationManager
+    private let controller = MenuBarController()
+
+    var body: some View {
+        Label("Pet Companion", systemImage: "pawprint.fill")
+            .labelStyle(.iconOnly)
+            .onAppear {
+                notificationManager.openTasks = {
+                    controller.open(.tasks, using: openWindow)
+                }
+            }
+    }
+}
+
 @MainActor
 struct StatusMenuView: View {
     @Environment(\.openWindow) private var openWindow
