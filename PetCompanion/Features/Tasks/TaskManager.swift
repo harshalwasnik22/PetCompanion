@@ -5,9 +5,13 @@ import SwiftData
 final class TaskManager {
     enum Error: LocalizedError {
         case invalidTitle
+        case reminderInPast
 
         var errorDescription: String? {
-            "Enter a task title."
+            switch self {
+            case .invalidTitle: "Enter a task title."
+            case .reminderInPast: "Choose a reminder time in the future."
+            }
         }
     }
 
@@ -19,8 +23,9 @@ final class TaskManager {
         self.reactionEngine = reactionEngine
     }
 
-    func create(title: String, notes: String, dueAt: Date?, reminderAt: Date?) throws {
+    func create(title: String, notes: String, dueAt: Date?, reminderAt: Date?, now: Date = .now) throws {
         let input = try validatedInput(title: title, notes: notes)
+        try validate(reminderAt: reminderAt, now: now)
         modelContext.insert(TaskItem(
             title: input.title,
             notes: input.notes,
@@ -31,8 +36,19 @@ final class TaskManager {
         reactionEngine.show(event: .onTaskAdded)
     }
 
-    func update(_ task: TaskItem, title: String, notes: String, dueAt: Date?, reminderAt: Date?) throws {
+    func update(
+        _ task: TaskItem,
+        title: String,
+        notes: String,
+        dueAt: Date?,
+        reminderAt: Date?,
+        now: Date = .now
+    ) throws {
         let input = try validatedInput(title: title, notes: notes)
+        // An unchanged expired reminder must not block edits to the rest of the task.
+        if reminderAt != task.reminderAt {
+            try validate(reminderAt: reminderAt, now: now)
+        }
         task.title = input.title
         task.notes = input.notes
         task.dueAt = dueAt
@@ -57,6 +73,10 @@ final class TaskManager {
         let input = TaskEditorInput(title: title, notes: notes)
         guard let title = input.validatedTitle else { throw Error.invalidTitle }
         return (title, input.normalizedNotes)
+    }
+
+    private func validate(reminderAt: Date?, now: Date) throws {
+        if let reminderAt, reminderAt < now { throw Error.reminderInPast }
     }
 
     private func save() throws {
