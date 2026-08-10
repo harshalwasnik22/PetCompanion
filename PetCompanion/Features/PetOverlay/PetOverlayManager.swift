@@ -12,6 +12,9 @@ final class PetOverlayManager: NSObject, ObservableObject {
 
     private let defaults: UserDefaults
     private var panel: NSPanel?
+    private var reactionEngine: PetReactionEngine?
+    private var petName = "Momo"
+    private var showInFullScreen = false
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -35,20 +38,8 @@ final class PetOverlayManager: NSObject, ObservableObject {
         panel.isOpaque = false
         panel.hasShadow = false
         panel.hidesOnDeactivate = false
-        panel.collectionBehavior = [.transient, .ignoresCycle]
-        panel.contentView = NSHostingView(
-            rootView: PetOverlayView(
-                onDragChanged: { [weak self] translation in
-                    self?.movePanel(by: translation)
-                },
-                onDragEnded: { [weak self] in
-                    self?.finishDrag()
-                },
-                onPetClicked: { [weak self] in
-                    self?.onPetClicked?()
-                }
-            )
-        )
+        applyCollectionBehavior(to: panel)
+        panel.contentView = overlayContentView()
 
         self.panel = panel
         applyVisibility()
@@ -60,6 +51,26 @@ final class PetOverlayManager: NSObject, ObservableObject {
         applyVisibility()
     }
 
+    func configure(reactionEngine: PetReactionEngine, petName: String, showInFullScreen: Bool) {
+        self.reactionEngine = reactionEngine
+        self.petName = petName
+        self.showInFullScreen = showInFullScreen
+        if let panel {
+            applyCollectionBehavior(to: panel)
+            panel.contentView = overlayContentView()
+        }
+    }
+
+    func setPetName(_ name: String) {
+        petName = name
+        if let panel { panel.contentView = overlayContentView() }
+    }
+
+    func setShowInFullScreen(_ enabled: Bool) {
+        showInFullScreen = enabled
+        if let panel { applyCollectionBehavior(to: panel) }
+    }
+
     private func applyVisibility() {
         guard let panel else { return }
         if isVisible {
@@ -67,6 +78,25 @@ final class PetOverlayManager: NSObject, ObservableObject {
         } else {
             panel.orderOut(nil)
         }
+    }
+
+    private func applyCollectionBehavior(to panel: NSPanel) {
+        panel.collectionBehavior = showInFullScreen
+            ? [.transient, .ignoresCycle, .canJoinAllSpaces, .fullScreenAuxiliary]
+            : [.transient, .ignoresCycle]
+    }
+
+    private func overlayContentView() -> NSHostingView<some View> {
+        let engine = reactionEngine ?? PetReactionEngine()
+        return NSHostingView(
+            rootView: PetOverlayView(
+                petName: petName,
+                onDragChanged: { [weak self] translation in self?.movePanel(by: translation) },
+                onDragEnded: { [weak self] in self?.finishDrag() },
+                onPetClicked: { [weak self] in self?.onPetClicked?() }
+            )
+            .environment(engine)
+        )
     }
 
     private func movePanel(by translation: CGSize) {
@@ -204,6 +234,10 @@ private enum PetOverlayPreferences {
 
 @MainActor
 private struct PetOverlayView: View {
+    @Environment(PetReactionEngine.self) private var reactionEngine
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    let petName: String
     let onDragChanged: (CGSize) -> Void
     let onDragEnded: () -> Void
     let onPetClicked: () -> Void
@@ -212,11 +246,25 @@ private struct PetOverlayView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
+            if let bubble = reactionEngine.bubble {
+                Text(bubble)
+                    .font(.callout.weight(.medium))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(.regularMaterial, in: Capsule())
+                    .frame(maxWidth: 260)
+                    .offset(y: -150)
+                    .accessibilityHidden(true)
+            }
             Image("redpanda-idle")
                 .resizable()
                 .scaledToFit()
                 .frame(width: PetOverlayManager.petRect.width, height: PetOverlayManager.petRect.height)
-                .accessibilityLabel("Momo the red panda, idle")
+                .accessibilityLabel("\(petName) the red panda, \(moodName)")
+                .accessibilityHint("Double-click for Quick Capture.")
+                .accessibilityAddTraits(.isButton)
                 .padding(.bottom, 0)
                 .gesture(
                     DragGesture(minimumDistance: 1)
@@ -234,7 +282,20 @@ private struct PetOverlayView: View {
                         }
                 )
                 .onTapGesture(perform: onPetClicked)
+                .accessibilityAction(.default, onPetClicked)
         }
         .frame(width: PetOverlayManager.panelSize.width, height: PetOverlayManager.panelSize.height, alignment: .bottom)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: reactionEngine.reactionToken)
+    }
+
+    private var moodName: String {
+        switch reactionEngine.mood {
+        case .idle: "idle"
+        case .happy: "happy"
+        case .excited: "excited"
+        case .sleepy: "sleepy"
+        case .dragged: "being moved"
+        case .reminding: "reminding you"
+        }
     }
 }

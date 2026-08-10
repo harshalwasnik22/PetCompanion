@@ -44,7 +44,12 @@ struct PetCompanionApp: App {
 
         Window("Settings", id: AppWindow.settings.id) {
             backedByStore { _ in
-                HotkeyStatusView(hotkeyManager: appDelegate.hotkeyManager)
+                SettingsView(
+                    hotkeyManager: appDelegate.hotkeyManager,
+                    appSettings: appDelegate.appSettings,
+                    overlayManager: appDelegate.overlayManager,
+                    notificationManager: appDelegate.notificationManager
+                )
             }
         }
         .defaultSize(width: 480, height: 360)
@@ -88,6 +93,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let store: Result<ModelContainer, Swift.Error>
     let overlayManager = PetOverlayManager()
     let hotkeyManager = HotkeyManager()
+    let appSettings = AppSettings()
     private var captureController: QuickCaptureController?
     let reactionEngine: PetReactionEngine
     let notificationManager: NotificationManager
@@ -106,6 +112,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.reactionEngine = reactionEngine
         self.notificationManager = NotificationManager(taskManager: taskManager)
         super.init()
+        overlayManager.configure(
+            reactionEngine: reactionEngine,
+            petName: appSettings.petName,
+            showInFullScreen: appSettings.showPetInFullScreen
+        )
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
