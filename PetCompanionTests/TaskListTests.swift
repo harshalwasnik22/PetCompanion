@@ -57,6 +57,101 @@ import Testing
 }
 
 @MainActor
+@Test func futureReminderPersists() throws {
+    let context = ModelContext(try AppModelContainer.make(inMemory: true))
+    let manager = TaskManager(modelContext: context, reactionEngine: PetReactionEngine())
+    let now = Date(timeIntervalSince1970: 1_000)
+    let reminderAt = now.addingTimeInterval(60)
+
+    try manager.create(title: "Feed Momo", notes: "", dueAt: nil, reminderAt: reminderAt, now: now)
+
+    let stored = try #require(context.fetch(FetchDescriptor<TaskItem>()).first)
+    #expect(stored.reminderAt == reminderAt)
+}
+
+@MainActor
+@Test func pastReminderIsRejectedWithoutInserting() throws {
+    let context = ModelContext(try AppModelContainer.make(inMemory: true))
+    let manager = TaskManager(modelContext: context, reactionEngine: PetReactionEngine())
+    let now = Date(timeIntervalSince1970: 1_000)
+
+    #expect(throws: TaskManager.Error.reminderInPast) {
+        try manager.create(
+            title: "Feed Momo",
+            notes: "",
+            dueAt: nil,
+            reminderAt: now.addingTimeInterval(-1),
+            now: now
+        )
+    }
+    #expect(try context.fetchCount(FetchDescriptor<TaskItem>()) == 0)
+}
+
+@MainActor
+@Test func taskWithoutReminderRemainsValid() throws {
+    let context = ModelContext(try AppModelContainer.make(inMemory: true))
+    let manager = TaskManager(modelContext: context, reactionEngine: PetReactionEngine())
+
+    try manager.create(
+        title: "Feed Momo",
+        notes: "",
+        dueAt: nil,
+        reminderAt: nil,
+        now: Date(timeIntervalSince1970: 1_000)
+    )
+
+    let stored = try #require(context.fetch(FetchDescriptor<TaskItem>()).first)
+    #expect(stored.reminderAt == nil)
+}
+
+/// The other half of the `update` guard: skipping validation for an unchanged
+/// reminder must not become a way to set a new past reminder on an existing task.
+@MainActor
+@Test func movingAReminderIntoThePastIsStillRejectedOnEdit() throws {
+    let context = ModelContext(try AppModelContainer.make(inMemory: true))
+    let manager = TaskManager(modelContext: context, reactionEngine: PetReactionEngine())
+    let now = Date(timeIntervalSince1970: 1_000)
+    let task = TaskItem(title: "Old title", reminderAt: now.addingTimeInterval(60))
+    context.insert(task)
+    try context.save()
+
+    #expect(throws: TaskManager.Error.reminderInPast) {
+        try manager.update(
+            task,
+            title: "New title",
+            notes: "",
+            dueAt: nil,
+            reminderAt: now.addingTimeInterval(-60),
+            now: now
+        )
+    }
+    #expect(task.title == "Old title")
+}
+
+@MainActor
+@Test func unchangedPastReminderDoesNotBlockEditing() throws {
+    let context = ModelContext(try AppModelContainer.make(inMemory: true))
+    let manager = TaskManager(modelContext: context, reactionEngine: PetReactionEngine())
+    let now = Date(timeIntervalSince1970: 1_000)
+    let reminderAt = now.addingTimeInterval(-60)
+    let task = TaskItem(title: "Old title", reminderAt: reminderAt)
+    context.insert(task)
+    try context.save()
+
+    try manager.update(
+        task,
+        title: "New title",
+        notes: "",
+        dueAt: nil,
+        reminderAt: reminderAt,
+        now: now
+    )
+
+    #expect(task.title == "New title")
+    #expect(task.reminderAt == reminderAt)
+}
+
+@MainActor
 @Test func taskManagerCompletesAndDeletesTasks() throws {
     let context = ModelContext(try AppModelContainer.make(inMemory: true))
     let manager = TaskManager(modelContext: context, reactionEngine: PetReactionEngine())
