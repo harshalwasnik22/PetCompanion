@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 import Testing
 @testable import PetCompanion
 
@@ -37,4 +38,69 @@ import Testing
 
     #expect(TaskListOrdering.pending([pending, done]).map(\.title) == ["Pending"])
     #expect(TaskListOrdering.completed([pending, done]).map(\.title) == ["Done"])
+}
+
+@MainActor
+@Test func taskManagerValidatesAndCreatesTasks() throws {
+    let context = ModelContext(try AppModelContainer.make(inMemory: true))
+    let manager = TaskManager(modelContext: context)
+
+    #expect(throws: TaskManager.Error.invalidTitle) {
+        try manager.create(title: "  ", notes: "Ignored", dueAt: nil, reminderAt: nil)
+    }
+    #expect(try context.fetchCount(FetchDescriptor<TaskItem>()) == 0)
+
+    try manager.create(title: "  Feed Momo  ", notes: "  At noon  ", dueAt: nil, reminderAt: nil)
+    let stored = try #require(context.fetch(FetchDescriptor<TaskItem>()).first)
+    #expect(stored.title == "Feed Momo")
+    #expect(stored.notes == "At noon")
+}
+
+@MainActor
+@Test func taskManagerCompletesAndDeletesTasks() throws {
+    let context = ModelContext(try AppModelContainer.make(inMemory: true))
+    let manager = TaskManager(modelContext: context)
+    let task = TaskItem(title: "Finish issue")
+    context.insert(task)
+    try context.save()
+
+    try manager.complete(task)
+    #expect(task.status == .completed)
+    #expect(task.completedAt != nil)
+
+    try manager.delete(task)
+    #expect(try context.fetchCount(FetchDescriptor<TaskItem>()) == 0)
+}
+
+/// `complete` guards on the current status specifically so a second call cannot
+/// move `completedAt` forward — a re-completed task would otherwise jump to the
+/// top of the Completed section.
+@MainActor
+@Test func completingAnAlreadyCompletedTaskKeepsTheOriginalTimestamp() throws {
+    let context = ModelContext(try AppModelContainer.make(inMemory: true))
+    let manager = TaskManager(modelContext: context)
+    let task = TaskItem(title: "Finish issue")
+    context.insert(task)
+
+    try manager.complete(task)
+    let firstCompletion = try #require(task.completedAt)
+
+    try manager.complete(task)
+    #expect(task.completedAt == firstCompletion)
+}
+
+@MainActor
+@Test func editingACompletedTaskDoesNotReopenIt() throws {
+    let context = ModelContext(try AppModelContainer.make(inMemory: true))
+    let manager = TaskManager(modelContext: context)
+    let completedAt = Date(timeIntervalSince1970: 1_000)
+    let task = TaskItem(title: "Old title", status: .completed, completedAt: completedAt)
+    context.insert(task)
+    try context.save()
+
+    try manager.update(task, title: "New title", notes: "Notes", dueAt: nil, reminderAt: nil)
+
+    #expect(task.title == "New title")
+    #expect(task.status == .completed)
+    #expect(task.completedAt == completedAt)
 }
