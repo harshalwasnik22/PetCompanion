@@ -43,7 +43,7 @@ import Testing
 @MainActor
 @Test func taskManagerValidatesAndCreatesTasks() throws {
     let context = ModelContext(try AppModelContainer.make(inMemory: true))
-    let manager = TaskManager(modelContext: context)
+    let manager = TaskManager(modelContext: context, reactionEngine: PetReactionEngine())
 
     #expect(throws: TaskManager.Error.invalidTitle) {
         try manager.create(title: "  ", notes: "Ignored", dueAt: nil, reminderAt: nil)
@@ -59,7 +59,7 @@ import Testing
 @MainActor
 @Test func taskManagerCompletesAndDeletesTasks() throws {
     let context = ModelContext(try AppModelContainer.make(inMemory: true))
-    let manager = TaskManager(modelContext: context)
+    let manager = TaskManager(modelContext: context, reactionEngine: PetReactionEngine())
     let task = TaskItem(title: "Finish issue")
     context.insert(task)
     try context.save()
@@ -78,7 +78,7 @@ import Testing
 @MainActor
 @Test func completingAnAlreadyCompletedTaskKeepsTheOriginalTimestamp() throws {
     let context = ModelContext(try AppModelContainer.make(inMemory: true))
-    let manager = TaskManager(modelContext: context)
+    let manager = TaskManager(modelContext: context, reactionEngine: PetReactionEngine())
     let task = TaskItem(title: "Finish issue")
     context.insert(task)
 
@@ -92,7 +92,7 @@ import Testing
 @MainActor
 @Test func editingACompletedTaskDoesNotReopenIt() throws {
     let context = ModelContext(try AppModelContainer.make(inMemory: true))
-    let manager = TaskManager(modelContext: context)
+    let manager = TaskManager(modelContext: context, reactionEngine: PetReactionEngine())
     let completedAt = Date(timeIntervalSince1970: 1_000)
     let task = TaskItem(title: "Old title", status: .completed, completedAt: completedAt)
     context.insert(task)
@@ -103,4 +103,56 @@ import Testing
     #expect(task.title == "New title")
     #expect(task.status == .completed)
     #expect(task.completedAt == completedAt)
+}
+
+@MainActor
+@Test func creatingATaskFiresTheAddedReactionOnce() throws {
+    let context = ModelContext(try AppModelContainer.make(inMemory: true))
+    let engine = PetReactionEngine()
+    let manager = TaskManager(modelContext: context, reactionEngine: engine)
+    let initialToken = engine.reactionToken
+
+    try manager.create(title: "Feed Momo", notes: "", dueAt: nil, reminderAt: nil)
+
+    #expect(engine.mood == .happy)
+    #expect(engine.bubble == "I’ll remember that!")
+    #expect(engine.priority == 60)
+    #expect(engine.reactionToken != initialToken)
+}
+
+@MainActor
+@Test func completingATaskFiresTheCompletedReactionOnce() throws {
+    let context = ModelContext(try AppModelContainer.make(inMemory: true))
+    let engine = PetReactionEngine()
+    let manager = TaskManager(modelContext: context, reactionEngine: engine)
+    let task = TaskItem(title: "Finish issue")
+    context.insert(task)
+    try context.save()
+
+    try manager.complete(task)
+    let completionToken = engine.reactionToken
+
+    #expect(engine.mood == .excited)
+    #expect(engine.bubble == "You did it!")
+    #expect(engine.priority == 80)
+
+    try manager.complete(task)
+    #expect(engine.reactionToken == completionToken)
+}
+
+@MainActor
+@Test func validationFailureFiresNoReaction() throws {
+    let context = ModelContext(try AppModelContainer.make(inMemory: true))
+    let engine = PetReactionEngine()
+    let manager = TaskManager(modelContext: context, reactionEngine: engine)
+    let initialToken = engine.reactionToken
+
+    #expect(throws: TaskManager.Error.invalidTitle) {
+        try manager.create(title: "  ", notes: "", dueAt: nil, reminderAt: nil)
+    }
+
+    #expect(engine.mood == .idle)
+    #expect(engine.bubble == nil)
+    #expect(engine.priority == 0)
+    #expect(engine.reactionToken == initialToken)
 }

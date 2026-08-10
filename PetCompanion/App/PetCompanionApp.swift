@@ -58,13 +58,22 @@ struct PetCompanionApp: App {
         .defaultSize(width: 320, height: 220)
     }
 
-    /// Puts the model container in the environment, or replaces the content with
-    /// recovery information when the store could not be opened.
+    /// Puts the model container and the reaction engine in the environment, or
+    /// replaces the content with recovery information when the store could not
+    /// be opened.
+    ///
+    /// The engine goes in here rather than on individual scenes because
+    /// `@Environment(PetReactionEngine.self)` traps at runtime when the value is
+    /// missing. Every scene already routes through this helper, so any future
+    /// window that builds a `TaskManager` — Quick Capture in #18 — gets the
+    /// engine without anyone having to remember.
     @ViewBuilder
     private func backedByStore(@ViewBuilder _ content: () -> some View) -> some View {
         switch store {
         case .success(let container):
-            content().modelContainer(container)
+            content()
+                .modelContainer(container)
+                .environment(appDelegate.reactionEngine)
         case .failure(let error):
             StorageRecoveryView(error: error)
         }
@@ -74,6 +83,7 @@ struct PetCompanionApp: App {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let overlayManager = PetOverlayManager()
+    let reactionEngine = PetReactionEngine()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         overlayManager.start()

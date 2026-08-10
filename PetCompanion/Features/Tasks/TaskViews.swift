@@ -66,13 +66,16 @@ private enum TaskEditorMode: Identifiable {
 @MainActor
 struct TaskListView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(PetReactionEngine.self) private var reactionEngine
     @Query private var tasks: [TaskItem]
     @State private var editorMode: TaskEditorMode?
     @State private var errorMessage: String?
 
     private var pending: [TaskItem] { TaskListOrdering.pending(tasks) }
     private var completed: [TaskItem] { TaskListOrdering.completed(tasks) }
-    private var taskManager: TaskManager { TaskManager(modelContext: modelContext) }
+    private var taskManager: TaskManager {
+        TaskManager(modelContext: modelContext, reactionEngine: reactionEngine)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -186,6 +189,7 @@ struct TaskRow: View {
 struct TaskEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Environment(PetReactionEngine.self) private var reactionEngine
 
     let task: TaskItem?
     @State private var title: String
@@ -207,7 +211,9 @@ struct TaskEditorSheet: View {
     }
 
     private var input: TaskEditorInput { TaskEditorInput(title: title, notes: notes) }
-    private var taskManager: TaskManager { TaskManager(modelContext: modelContext) }
+    private var taskManager: TaskManager {
+        TaskManager(modelContext: modelContext, reactionEngine: reactionEngine)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
