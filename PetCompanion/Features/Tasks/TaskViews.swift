@@ -72,6 +72,7 @@ struct TaskListView: View {
 
     private var pending: [TaskItem] { TaskListOrdering.pending(tasks) }
     private var completed: [TaskItem] { TaskListOrdering.completed(tasks) }
+    private var taskManager: TaskManager { TaskManager(modelContext: modelContext) }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -128,26 +129,16 @@ struct TaskListView: View {
     @ViewBuilder
     private func row(_ task: TaskItem) -> some View {
         TaskRow(task: task) {
-            task.status = task.status == .pending ? .completed : .pending
-            task.completedAt = task.status == .completed ? .now : nil
-            save()
+            do { try taskManager.complete(task) } catch { errorMessage = error.localizedDescription }
         } onEdit: {
             presentEditor(task)
         } onDelete: {
-            modelContext.delete(task)
-            save()
+            do { try taskManager.delete(task) } catch { errorMessage = error.localizedDescription }
         }
     }
 
     private func presentEditor(_ task: TaskItem? = nil) {
         editorMode = task.map(TaskEditorMode.edit) ?? .create
-    }
-
-    private func save() {
-        do { try modelContext.save() } catch {
-            modelContext.rollback()
-            errorMessage = error.localizedDescription
-        }
     }
 }
 
@@ -164,7 +155,8 @@ struct TaskRow: View {
                     .font(.title3)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(task.status == .completed ? "Mark \(task.title) incomplete" : "Mark \(task.title) complete")
+            .disabled(task.status == .completed)
+            .accessibilityLabel(task.status == .completed ? "\(task.title) completed" : "Mark \(task.title) complete")
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(task.title)
@@ -215,6 +207,7 @@ struct TaskEditorSheet: View {
     }
 
     private var input: TaskEditorInput { TaskEditorInput(title: title, notes: notes) }
+    private var taskManager: TaskManager { TaskManager(modelContext: modelContext) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -246,19 +239,25 @@ struct TaskEditorSheet: View {
     }
 
     private func save() {
-        guard let title = input.validatedTitle else { return }
-        let item = task ?? TaskItem(title: title)
-        item.title = title
-        item.notes = input.normalizedNotes
-        item.dueAt = hasDueDate ? dueAt : nil
-        item.reminderAt = hasReminder ? reminderAt : nil
-        if task == nil { modelContext.insert(item) }
-
         do {
-            try modelContext.save()
+            if let task {
+                try taskManager.update(
+                    task,
+                    title: title,
+                    notes: notes,
+                    dueAt: hasDueDate ? dueAt : nil,
+                    reminderAt: hasReminder ? reminderAt : nil
+                )
+            } else {
+                try taskManager.create(
+                    title: title,
+                    notes: notes,
+                    dueAt: hasDueDate ? dueAt : nil,
+                    reminderAt: hasReminder ? reminderAt : nil
+                )
+            }
             dismiss()
         } catch {
-            modelContext.rollback()
             errorMessage = error.localizedDescription
         }
     }
