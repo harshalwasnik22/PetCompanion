@@ -31,6 +31,7 @@ struct StatusMenuView: View {
     @Environment(\.openWindow) private var openWindow
 
     @ObservedObject var overlayManager: PetOverlayManager
+    let quickCaptureController: QuickCaptureController
     private let controller = MenuBarController()
 
     var body: some View {
@@ -43,7 +44,7 @@ struct StatusMenuView: View {
             }
 
             Button("Quick Capture") {
-                controller.open(.quickCapture, using: openWindow)
+                quickCaptureController.show()
             }
 
             Button("Tasks") {

@@ -8,6 +8,7 @@ final class PetOverlayManager: NSObject, ObservableObject {
     static let minimumVisiblePetLength: CGFloat = 48
 
     @Published private(set) var isVisible: Bool
+    var onPetClicked: (() -> Void)?
 
     private let defaults: UserDefaults
     private var panel: NSPanel?
@@ -42,6 +43,9 @@ final class PetOverlayManager: NSObject, ObservableObject {
                 },
                 onDragEnded: { [weak self] in
                     self?.finishDrag()
+                },
+                onPetClicked: { [weak self] in
+                    self?.onPetClicked?()
                 }
             )
         )
@@ -138,6 +142,32 @@ final class PetOverlayManager: NSObject, ObservableObject {
             defaults.set(number.uint32Value, forKey: PetOverlayPreferences.displayID)
         }
     }
+
+    func quickCaptureFrame(for size: CGSize) -> CGRect {
+        let screen: NSScreen
+        let proposedOrigin: CGPoint
+
+        if isVisible,
+           let panel,
+           let petScreen = screenContainingPet(in: panel.frame) {
+            screen = petScreen
+            proposedOrigin = CGPoint(
+                x: panel.frame.maxX + 12,
+                y: panel.frame.maxY - size.height
+            )
+        } else {
+            screen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) ?? NSScreen.main!
+            proposedOrigin = CGPoint(
+                x: NSEvent.mouseLocation.x + 16,
+                y: NSEvent.mouseLocation.y - size.height - 16
+            )
+        }
+
+        return QuickCaptureGeometry.clampedFrame(
+            CGRect(origin: proposedOrigin, size: size),
+            to: screen.visibleFrame
+        )
+    }
 }
 
 enum PetOverlayGeometry {
@@ -176,6 +206,7 @@ private enum PetOverlayPreferences {
 private struct PetOverlayView: View {
     let onDragChanged: (CGSize) -> Void
     let onDragEnded: () -> Void
+    let onPetClicked: () -> Void
 
     @State private var lastTranslation: CGSize = .zero
 
@@ -202,6 +233,7 @@ private struct PetOverlayView: View {
                             onDragEnded()
                         }
                 )
+                .onTapGesture(perform: onPetClicked)
         }
         .frame(width: PetOverlayManager.panelSize.width, height: PetOverlayManager.panelSize.height, alignment: .bottom)
     }
