@@ -70,11 +70,20 @@ struct TaskListView: View {
     @Query private var tasks: [TaskItem]
     @State private var editorMode: TaskEditorMode?
     @State private var errorMessage: String?
+    let notificationManager: NotificationManager?
+
+    init(notificationManager: NotificationManager? = nil) {
+        self.notificationManager = notificationManager
+    }
 
     private var pending: [TaskItem] { TaskListOrdering.pending(tasks) }
     private var completed: [TaskItem] { TaskListOrdering.completed(tasks) }
     private var taskManager: TaskManager {
-        TaskManager(modelContext: modelContext, reactionEngine: reactionEngine)
+        TaskManager(
+            modelContext: modelContext,
+            reactionEngine: reactionEngine,
+            notificationManager: notificationManager
+        )
     }
 
     var body: some View {
@@ -117,7 +126,7 @@ struct TaskListView: View {
         }
         .frame(minWidth: 480, minHeight: 360)
         .sheet(item: $editorMode) { mode in
-            TaskEditorSheet(task: mode.task)
+            TaskEditorSheet(task: mode.task, notificationManager: notificationManager)
         }
         .alert("Task could not be saved", isPresented: Binding(
             get: { errorMessage != nil },
@@ -192,6 +201,7 @@ struct TaskEditorSheet: View {
     @Environment(PetReactionEngine.self) private var reactionEngine
 
     let task: TaskItem?
+    let notificationManager: NotificationManager?
     @State private var title: String
     @State private var notes: String
     @State private var hasDueDate: Bool
@@ -200,8 +210,9 @@ struct TaskEditorSheet: View {
     @State private var reminderAt: Date
     @State private var errorMessage: String?
 
-    init(task: TaskItem? = nil) {
+    init(task: TaskItem? = nil, notificationManager: NotificationManager? = nil) {
         self.task = task
+        self.notificationManager = notificationManager
         _title = State(initialValue: task?.title ?? "")
         _notes = State(initialValue: task?.notes ?? "")
         _hasDueDate = State(initialValue: task?.dueAt != nil)
@@ -212,7 +223,11 @@ struct TaskEditorSheet: View {
 
     private var input: TaskEditorInput { TaskEditorInput(title: title, notes: notes) }
     private var taskManager: TaskManager {
-        TaskManager(modelContext: modelContext, reactionEngine: reactionEngine)
+        TaskManager(
+            modelContext: modelContext,
+            reactionEngine: reactionEngine,
+            notificationManager: notificationManager
+        )
     }
 
     var body: some View {

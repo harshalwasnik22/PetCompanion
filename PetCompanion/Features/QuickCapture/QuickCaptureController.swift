@@ -9,16 +9,19 @@ final class QuickCaptureController {
     private let modelContainer: ModelContainer
     private let overlayManager: PetOverlayManager
     private let reactionEngine: PetReactionEngine
+    private let notificationManager: NotificationManager
     private var panel: NSPanel?
 
     init(
         modelContainer: ModelContainer,
         overlayManager: PetOverlayManager,
-        reactionEngine: PetReactionEngine
+        reactionEngine: PetReactionEngine,
+        notificationManager: NotificationManager
     ) {
         self.modelContainer = modelContainer
         self.overlayManager = overlayManager
         self.reactionEngine = reactionEngine
+        self.notificationManager = notificationManager
     }
 
     func show() {
@@ -28,6 +31,7 @@ final class QuickCaptureController {
         panel.contentView = NSHostingView(
             rootView: QuickCaptureView(
                 reactionEngine: reactionEngine,
+                notificationManager: notificationManager,
                 onCancel: { [weak self] in self?.dismiss() },
                 onSaved: { [weak self] in self?.dismiss() }
             )
@@ -78,6 +82,7 @@ enum QuickCaptureGeometry {
 private struct QuickCaptureView: View {
     @Environment(\.modelContext) private var modelContext
     let reactionEngine: PetReactionEngine
+    let notificationManager: NotificationManager
     @FocusState private var titleIsFocused: Bool
 
     let onCancel: () -> Void
@@ -151,7 +156,11 @@ private struct QuickCaptureView: View {
     private func save() {
         guard input.validatedTitle != nil else { return }
         do {
-            try TaskManager(modelContext: modelContext, reactionEngine: reactionEngine).create(
+            try TaskManager(
+                modelContext: modelContext,
+                reactionEngine: reactionEngine,
+                notificationManager: notificationManager
+            ).create(
                 title: title,
                 notes: notes,
                 dueAt: hasDueDate ? dueAt : nil,

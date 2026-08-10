@@ -10,22 +10,24 @@ struct PetCompanionApp: App {
     /// Opened once at launch. A failure is carried rather than thrown so the app
     /// can explain itself instead of crashing, and so nothing silently falls back
     /// to a throwaway in-memory store that would accept saves and lose them.
-    private let store = Result { try AppModelContainer.make() }
+    private var store: Result<ModelContainer, Swift.Error> { appDelegate.store }
 
     var body: some Scene {
-        MenuBarExtra("Pet Companion", systemImage: "pawprint.fill") {
+        MenuBarExtra {
             backedByStore { container in
                 StatusMenuView(
                     overlayManager: appDelegate.overlayManager,
                     quickCaptureController: appDelegate.quickCaptureController(for: container)
                 )
             }
+        } label: {
+            NotificationMenuBarLabel(notificationManager: appDelegate.notificationManager)
         }
         .menuBarExtraStyle(.window)
 
         Window("Tasks", id: AppWindow.tasks.id) {
             backedByStore { _ in
-                TaskListView()
+                TaskListView(notificationManager: appDelegate.notificationManager)
             }
         }
         .defaultSize(width: 480, height: 360)
@@ -86,11 +88,30 @@ struct PetCompanionApp: App {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    let store: Result<ModelContainer, Swift.Error>
     let overlayManager = PetOverlayManager()
     private var captureController: QuickCaptureController?
-    let reactionEngine = PetReactionEngine()
+    let reactionEngine: PetReactionEngine
+    let notificationManager: NotificationManager
+
+    override init() {
+        let store = Result { try AppModelContainer.make() }
+        let reactionEngine = PetReactionEngine()
+        let taskManager: TaskManager?
+        switch store {
+        case .success(let container):
+            taskManager = TaskManager(modelContext: container.mainContext, reactionEngine: reactionEngine)
+        case .failure:
+            taskManager = nil
+        }
+        self.store = store
+        self.reactionEngine = reactionEngine
+        self.notificationManager = NotificationManager(taskManager: taskManager)
+        super.init()
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        notificationManager.registerCategory()
         overlayManager.start()
     }
 
@@ -100,7 +121,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let controller = QuickCaptureController(
             modelContainer: modelContainer,
             overlayManager: overlayManager,
-            reactionEngine: reactionEngine
+            reactionEngine: reactionEngine,
+            notificationManager: notificationManager
         )
         overlayManager.onPetClicked = { [weak controller] in
             controller?.show()
