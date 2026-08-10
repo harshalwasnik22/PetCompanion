@@ -22,10 +22,7 @@ struct PetCompanionApp: App {
 
         Window("Tasks", id: AppWindow.tasks.id) {
             backedByStore {
-                PlaceholderDestinationView(
-                    title: "Tasks",
-                    message: "Task management will appear here in the next milestone."
-                )
+                TaskListView()
             }
         }
         .defaultSize(width: 480, height: 360)
