@@ -12,9 +12,11 @@ final class TaskManager {
     }
 
     private let modelContext: ModelContext
+    private let reactionEngine: PetReactionEngine
 
-    init(modelContext: ModelContext) {
+    init(modelContext: ModelContext, reactionEngine: PetReactionEngine) {
         self.modelContext = modelContext
+        self.reactionEngine = reactionEngine
     }
 
     func create(title: String, notes: String, dueAt: Date?, reminderAt: Date?) throws {
@@ -26,6 +28,7 @@ final class TaskManager {
             reminderAt: reminderAt
         ))
         try save()
+        reactionEngine.show(event: .onTaskAdded)
     }
 
     func update(_ task: TaskItem, title: String, notes: String, dueAt: Date?, reminderAt: Date?) throws {
@@ -42,6 +45,7 @@ final class TaskManager {
         task.status = .completed
         task.completedAt = .now
         try save()
+        reactionEngine.show(event: .onTaskCompleted)
     }
 
     func delete(_ task: TaskItem) throws {
