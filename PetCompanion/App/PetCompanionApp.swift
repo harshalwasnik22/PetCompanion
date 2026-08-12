@@ -44,9 +44,11 @@ struct PetCompanionApp: App {
 
         Window("Settings", id: AppWindow.settings.id) {
             backedByStore { _ in
-                PlaceholderDestinationView(
-                    title: "Settings",
-                    message: "Pet and notification preferences will appear here in a later milestone."
+                SettingsView(
+                    hotkeyManager: appDelegate.hotkeyManager,
+                    appSettings: appDelegate.appSettings,
+                    overlayManager: appDelegate.overlayManager,
+                    notificationManager: appDelegate.notificationManager
                 )
             }
         }
@@ -90,6 +92,8 @@ struct PetCompanionApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let store: Result<ModelContainer, Swift.Error>
     let overlayManager = PetOverlayManager()
+    let hotkeyManager = HotkeyManager()
+    let appSettings = AppSettings()
     private var captureController: QuickCaptureController?
     let reactionEngine: PetReactionEngine
     let notificationManager: NotificationManager
@@ -116,12 +120,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.taskManager = taskManager
         super.init()
         notificationManager.setTaskManager(taskManager)
+        overlayManager.configure(
+            reactionEngine: reactionEngine,
+            petName: appSettings.petName,
+            showInFullScreen: appSettings.showPetInFullScreen
+        )
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         notificationManager.registerCategory()
         Task { await taskManager?.rescheduleFutureReminders() }
         overlayManager.start()
+        if case .success(let container) = store {
+            _ = quickCaptureController(for: container)
+        }
     }
 
     func quickCaptureController(for modelContainer: ModelContainer) -> QuickCaptureController {
@@ -137,6 +149,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             controller?.show()
         }
         captureController = controller
+        hotkeyManager.register { [weak controller] in
+            controller?.show()
+        }
         return controller
     }
 }
