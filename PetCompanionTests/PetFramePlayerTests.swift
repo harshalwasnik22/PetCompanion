@@ -98,7 +98,7 @@ private let allHappyFrames: Set<String> = [
 
 @MainActor
 @Test func aStoppedPlayerResumesWhenTheSameReactionIsReapplied() {
-    // Plan.md §3E: a hidden pet resumes idle when shown again. onAppear
+    // Plan.md §3E: a hidden pet resumes when shown again. The manager
     // re-sends the unchanged mood and token, so that path must restart it.
     let subject = player(known: allIdleFrames)
     let token = UUID()
@@ -106,6 +106,59 @@ private let allHappyFrames: Set<String> = [
     subject.stop()
 
     subject.update(mood: .idle, token: token, reduceMotion: false)
+    subject.advance()
+
+    #expect(subject.currentAssetName == "redpanda-idle-02")
+}
+
+@MainActor
+@Test func enablingReduceMotionMidAnimationHoldsTheFirstFrame() {
+    let subject = player(known: allIdleFrames)
+    let token = UUID()
+    subject.update(mood: .idle, token: token, reduceMotion: false)
+    subject.advance()
+
+    subject.update(mood: .idle, token: token, reduceMotion: true)
+    subject.advance()
+
+    #expect(subject.currentAssetName == "redpanda-idle-01")
+}
+
+@MainActor
+@Test func disablingReduceMotionResumesTheSameAnimation() {
+    let subject = player(known: allIdleFrames)
+    let token = UUID()
+    subject.update(mood: .idle, token: token, reduceMotion: true)
+
+    subject.update(mood: .idle, token: token, reduceMotion: false)
+    subject.advance()
+
+    #expect(subject.currentAssetName == "redpanda-idle-02")
+}
+
+@MainActor
+@Test func anUnchangedUpdateDoesNotRestartARunningAnimation() {
+    let subject = player(known: allIdleFrames)
+    let token = UUID()
+    subject.update(mood: .idle, token: token, reduceMotion: false)
+    subject.advance()
+
+    subject.update(mood: .idle, token: token, reduceMotion: false)
+
+    #expect(subject.currentAssetName == "redpanda-idle-02")
+}
+
+@MainActor
+@Test func hidingTheOverlayStopsItsPlayer() {
+    let subject = player(known: allIdleFrames)
+    subject.update(mood: .idle, token: UUID(), reduceMotion: false)
+    subject.advance()
+    let suiteName = "PetOverlayManagerTests.\(UUID())"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let manager = PetOverlayManager(defaults: defaults, player: subject)
+
+    manager.toggleVisibility()
     subject.advance()
 
     #expect(subject.currentAssetName == "redpanda-idle-02")

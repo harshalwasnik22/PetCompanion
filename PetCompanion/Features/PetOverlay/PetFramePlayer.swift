@@ -16,6 +16,7 @@ final class PetFramePlayer {
     private var animation: PetAnimation = .forMood(.idle)
     private var frame = 0
     private var token: UUID?
+    private(set) var reduceMotion = false
     private var isAnimating = false
     private var tickTask: Task<Void, Never>?
 
@@ -27,10 +28,14 @@ final class PetFramePlayer {
     /// Restarts on a new token as well as a new mood: an equal-priority reaction
     /// refreshes the same mood, and that must replay rather than continue.
     func update(mood: PetMood, token: UUID, reduceMotion: Bool) {
-        guard mood != self.mood || token != self.token || !isAnimating else { return }
+        guard mood != self.mood
+                || token != self.token
+                || reduceMotion != self.reduceMotion
+                || !isAnimating else { return }
 
         self.mood = mood
         self.token = token
+        self.reduceMotion = reduceMotion
         animation = .forMood(mood)
         frame = 0
         refreshAssetName()
