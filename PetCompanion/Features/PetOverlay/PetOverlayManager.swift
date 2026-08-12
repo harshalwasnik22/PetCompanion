@@ -78,6 +78,7 @@ final class PetOverlayManager: NSObject, ObservableObject {
     private func applyVisibility() {
         if isVisible {
             if let reactionEngine {
+                reactionEngine.discardTransientReaction()
                 player.update(
                     mood: reactionEngine.mood,
                     token: reactionEngine.reactionToken,
