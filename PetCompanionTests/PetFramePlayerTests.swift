@@ -163,3 +163,36 @@ private let allHappyFrames: Set<String> = [
 
     #expect(subject.currentAssetName == "redpanda-idle-02")
 }
+
+@MainActor
+@Test func reactionRaisedWhileHiddenIsDiscardedBeforeShowing() {
+    let suiteName = "PetOverlayManagerTests.\(UUID())"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let manager = PetOverlayManager(defaults: defaults, player: player(known: allIdleFrames))
+    let engine = PetReactionEngine()
+    manager.configure(reactionEngine: engine, petName: "Momo", showInFullScreen: false)
+
+    manager.toggleVisibility()
+    engine.show(event: .onTaskCompleted)
+    manager.toggleVisibility()
+
+    #expect(engine.mood == .idle)
+    #expect(engine.bubble == nil)
+}
+
+@MainActor
+@Test func reactionRaisedBeforeVisibleStartIsPreserved() {
+    let suiteName = "PetOverlayManagerTests.\(UUID())"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let manager = PetOverlayManager(defaults: defaults, player: player(known: allIdleFrames))
+    let engine = PetReactionEngine()
+    manager.configure(reactionEngine: engine, petName: "Momo", showInFullScreen: false)
+    engine.show(event: .onTaskCompleted)
+
+    manager.start()
+
+    #expect(engine.mood == .excited)
+    #expect(engine.bubble == "You did it!")
+}

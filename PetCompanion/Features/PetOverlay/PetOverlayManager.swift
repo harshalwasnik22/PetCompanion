@@ -46,13 +46,13 @@ final class PetOverlayManager: NSObject, ObservableObject {
         panel.contentView = overlayContentView()
 
         self.panel = panel
-        applyVisibility()
+        applyVisibility(isVisibilityTransition: false)
     }
 
     func toggleVisibility() {
         isVisible.toggle()
         defaults.set(isVisible, forKey: PetOverlayPreferences.isVisible)
-        applyVisibility()
+        applyVisibility(isVisibilityTransition: true)
     }
 
     func configure(reactionEngine: PetReactionEngine, petName: String, showInFullScreen: Bool) {
@@ -75,9 +75,12 @@ final class PetOverlayManager: NSObject, ObservableObject {
         if let panel { applyCollectionBehavior(to: panel) }
     }
 
-    private func applyVisibility() {
+    private func applyVisibility(isVisibilityTransition: Bool) {
         if isVisible {
             if let reactionEngine {
+                if isVisibilityTransition {
+                    reactionEngine.discardTransientReaction()
+                }
                 player.update(
                     mood: reactionEngine.mood,
                     token: reactionEngine.reactionToken,
@@ -87,6 +90,7 @@ final class PetOverlayManager: NSObject, ObservableObject {
             panel?.orderFrontRegardless()
         } else {
             player.stop()
+            reactionEngine?.discardTransientReaction()
             panel?.orderOut(nil)
         }
     }

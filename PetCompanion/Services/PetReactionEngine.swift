@@ -83,6 +83,11 @@ final class PetReactionEngine {
         }
     }
 
+    func discardTransientReaction() {
+        guard mood != .idle, mood != .dragged else { return }
+        resetToIdle()
+    }
+
     private func show(_ presentation: Presentation) {
         guard presentation.priority >= priority else {
             return
