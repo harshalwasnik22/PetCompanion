@@ -39,26 +39,39 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     static let categoryIdentifier = "TASK_REMINDER"
     static let openTaskActionIdentifier = "OPEN_TASK"
     static let markCompleteActionIdentifier = "MARK_COMPLETE"
+    /// `nonisolated` because it is read from `init`'s default argument, which is
+    /// evaluated outside the actor — main-actor isolation there is a Swift 6 error.
+    nonisolated static let foregroundReminderCoalescingWindow: Duration = .milliseconds(100)
     /// Pure string logic, deliberately off the main actor: #14 derives the same
     /// identifier while scheduling, and the isolation would buy nothing.
     nonisolated private static let notificationPrefix = "task-reminder-"
 
     private let center: any NotificationCenterClient
     private var taskManager: TaskManager?
+    private var reactionEngine: PetReactionEngine?
+    private let foregroundReminderCoalescingWindow: Duration
+    private var foregroundReminderCount = 0
+    private var foregroundReminderTask: Task<Void, Never>?
     let reminderScheduler: ReminderScheduler
     var openTasks: () -> Void = {}
 
     init(
         center: any NotificationCenterClient = UNUserNotificationCenter.current(),
-        taskManager: TaskManager? = nil
+        taskManager: TaskManager? = nil,
+        foregroundReminderCoalescingWindow: Duration = NotificationManager.foregroundReminderCoalescingWindow
     ) {
         self.center = center
         self.taskManager = taskManager
+        self.foregroundReminderCoalescingWindow = foregroundReminderCoalescingWindow
         self.reminderScheduler = ReminderScheduler(center: center)
     }
 
     func setTaskManager(_ taskManager: TaskManager?) {
         self.taskManager = taskManager
+    }
+
+    func setReactionEngine(_ reactionEngine: PetReactionEngine?) {
+        self.reactionEngine = reactionEngine
     }
 
     func registerCategory() {
@@ -115,6 +128,29 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
+    func willPresent(notificationIdentifier: String) -> UNNotificationPresentationOptions {
+        guard Self.taskID(from: notificationIdentifier) != nil else { return [.banner, .sound] }
+
+        foregroundReminderCount += 1
+        guard foregroundReminderTask == nil else { return [.banner, .sound] }
+
+        let window = foregroundReminderCoalescingWindow
+        foregroundReminderTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: window)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled, let self else { return }
+
+            let count = foregroundReminderCount
+            foregroundReminderCount = 0
+            foregroundReminderTask = nil
+            reactionEngine?.show(event: .onReminderDue(count: count))
+        }
+        return [.banner, .sound]
+    }
+
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse
@@ -122,5 +158,15 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         let actionIdentifier = response.actionIdentifier
         let notificationIdentifier = response.notification.request.identifier
         await route(actionIdentifier: actionIdentifier, notificationIdentifier: notificationIdentifier)
+    }
+
+    /// The async variant, matching `didReceive` above. The completion-handler
+    /// form would have to answer before hopping to the main actor, which means
+    /// hard-coding the options and discarding the ones `willPresent` returns.
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification
+    ) async -> UNNotificationPresentationOptions {
+        await willPresent(notificationIdentifier: notification.request.identifier)
     }
 }
