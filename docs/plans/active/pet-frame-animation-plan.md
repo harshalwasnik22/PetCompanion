@@ -289,8 +289,10 @@ git commit -m "Add pet frame asset resolver with fallback chain"
   - `func advance()`
   - `func stop()`
 
-`advance()` is public so tests drive frames deterministically without waiting on a
-clock. The internal timing task calls the same method.
+`advance()` carries no access modifier, so it is internal and reachable from tests
+via the existing `@testable import PetCompanion`. It is deliberately not private:
+tests step frames deterministically instead of waiting on a clock, and the timing
+task calls the same method. Do not widen it to `public`.
 
 - [ ] **Step 1: Write the failing test**
 
