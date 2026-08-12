@@ -95,3 +95,18 @@ private let allHappyFrames: Set<String> = [
 
     #expect(subject.currentAssetName == "redpanda-idle-01")
 }
+
+@MainActor
+@Test func aStoppedPlayerResumesWhenTheSameReactionIsReapplied() {
+    // Plan.md §3E: a hidden pet resumes idle when shown again. onAppear
+    // re-sends the unchanged mood and token, so that path must restart it.
+    let subject = player(known: allIdleFrames)
+    let token = UUID()
+    subject.update(mood: .idle, token: token, reduceMotion: false)
+    subject.stop()
+
+    subject.update(mood: .idle, token: token, reduceMotion: false)
+    subject.advance()
+
+    #expect(subject.currentAssetName == "redpanda-idle-02")
+}

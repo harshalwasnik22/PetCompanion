@@ -27,7 +27,7 @@ final class PetFramePlayer {
     /// Restarts on a new token as well as a new mood: an equal-priority reaction
     /// refreshes the same mood, and that must replay rather than continue.
     func update(mood: PetMood, token: UUID, reduceMotion: Bool) {
-        guard mood != self.mood || token != self.token else { return }
+        guard mood != self.mood || token != self.token || !isAnimating else { return }
 
         self.mood = mood
         self.token = token
