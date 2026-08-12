@@ -34,10 +34,7 @@ struct PetCompanionApp: App {
 
         Window("Habits", id: AppWindow.habits.id) {
             backedByStore { _ in
-                PlaceholderDestinationView(
-                    title: "Habits",
-                    message: "Daily habits will appear here in the next milestone."
-                )
+                HabitListView()
             }
         }
         .defaultSize(width: 480, height: 360)
