@@ -6,21 +6,37 @@ struct HabitListView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(PetReactionEngine.self) private var reactionEngine
     @Query(sort: \Habit.createdAt) private var habits: [Habit]
+    @Query private var logs: [HabitLog]
     @State private var isPresentingEditor = false
     @State private var errorMessage: String?
+    /// Neither `@Query` changes when the clock rolls past local midnight, so
+    /// without this the window would keep showing yesterday's checkmarks for as
+    /// long as it stayed open. `NSCalendarDayChanged` also covers a time-zone
+    /// change, which can move "today" in either direction.
+    @State private var today = HabitLog.dayKey(for: .now)
 
     private var activeHabits: [Habit] { HabitListOrdering.active(habits) }
     private var inactiveHabits: [Habit] { HabitListOrdering.inactive(habits) }
+    /// ponytail: scans every log to find today's. A personal habit list stays
+    /// small for years; add a `dayKey` predicate to the `@Query` if it ever
+    /// doesn't, remembering the key has to change at local midnight.
+    private var completedHabitIDs: Set<UUID> {
+        Set(logs.lazy.filter { $0.dayKey == today }.map(\.habitID))
+    }
     private var habitManager: HabitManager {
         HabitManager(modelContext: modelContext, reactionEngine: reactionEngine)
     }
 
     var body: some View {
+        // Bound once per render: the set is derived from every log, and reading
+        // the computed property per row would rebuild it that many times.
+        let completedHabitIDs = completedHabitIDs
+
         VStack(spacing: 0) {
             HStack {
                 VStack(alignment: .leading) {
                     Text("Today").font(.title2.bold())
-                    Text("^[\(activeHabits.count) active habit](inflect: true)")
+                    Text("\(activeHabits.count { completedHabitIDs.contains($0.id) }) of \(activeHabits.count) complete")
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -47,7 +63,12 @@ struct HabitListView: View {
                             Text("Nothing active").foregroundStyle(.secondary)
                         }
                         ForEach(activeHabits) { habit in
-                            HabitRow(habit: habit) { setActive(habit, on: false) }
+                            HabitRow(
+                                habit: habit,
+                                isCompleted: completedHabitIDs.contains(habit.id),
+                                onToggleCompletion: { toggleCompletion(habit) },
+                                onSetActive: { setActive(habit, on: false) }
+                            )
                         }
                     }
 
@@ -56,13 +77,26 @@ struct HabitListView: View {
                             Text("No inactive habits").foregroundStyle(.secondary)
                         }
                         ForEach(inactiveHabits) { habit in
-                            HabitRow(habit: habit) { setActive(habit, on: true) }
+                            // No completion here: an inactive habit has left
+                            // Today, so checking it off would contradict that.
+                            HabitRow(
+                                habit: habit,
+                                isCompleted: completedHabitIDs.contains(habit.id),
+                                onToggleCompletion: nil,
+                                onSetActive: { setActive(habit, on: true) }
+                            )
                         }
                     }
                 }
             }
         }
         .frame(minWidth: 480, minHeight: 360)
+        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
+            today = HabitLog.dayKey(for: .now)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .NSSystemTimeZoneDidChange)) { _ in
+            today = HabitLog.dayKey(for: .now)
+        }
         .sheet(isPresented: $isPresentingEditor) {
             HabitEditorSheet()
         }
@@ -83,21 +117,38 @@ struct HabitListView: View {
             errorMessage = error.localizedDescription
         }
     }
+
+    private func toggleCompletion(_ habit: Habit) {
+        do {
+            if completedHabitIDs.contains(habit.id) {
+                try habitManager.undoToday(habit)
+            } else {
+                try habitManager.completeToday(habit)
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
 }
 
 struct HabitRow: View {
     let habit: Habit
+    let isCompleted: Bool
+    /// `nil` for a habit that is not in Today and so cannot be completed.
+    let onToggleCompletion: (() -> Void)?
     let onSetActive: () -> Void
 
     var body: some View {
         HStack {
-            Button(action: {}) {
-                Image(systemName: "circle")
+            Button(action: { onToggleCompletion?() }) {
+                Image(systemName: isCompleted ? "checkmark.circle.fill" : "circle")
                     .font(.title3)
             }
             .buttonStyle(.plain)
-            .disabled(true)
-            .accessibilityLabel("Mark \(habit.name) complete")
+            .disabled(onToggleCompletion == nil)
+            .accessibilityLabel(
+                isCompleted ? "Undo completion for \(habit.name)" : "Mark \(habit.name) complete"
+            )
 
             Text(habit.name)
             Spacer()
