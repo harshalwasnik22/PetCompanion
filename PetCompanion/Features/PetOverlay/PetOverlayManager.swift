@@ -11,13 +11,17 @@ final class PetOverlayManager: NSObject, ObservableObject {
     var onPetClicked: (() -> Void)?
 
     private let defaults: UserDefaults
+    private let player: PetFramePlayer
     private var panel: NSPanel?
     private var reactionEngine: PetReactionEngine?
     private var petName = "Momo"
     private var showInFullScreen = false
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, player: PetFramePlayer? = nil) {
         self.defaults = defaults
+        self.player = player ?? PetFramePlayer(
+            resolver: PetFrameResolver(exists: { NSImage(named: $0) != nil })
+        )
         self.isVisible = defaults.object(forKey: PetOverlayPreferences.isVisible) as? Bool ?? true
         super.init()
     }
@@ -72,11 +76,18 @@ final class PetOverlayManager: NSObject, ObservableObject {
     }
 
     private func applyVisibility() {
-        guard let panel else { return }
         if isVisible {
-            panel.orderFrontRegardless()
+            if let reactionEngine {
+                player.update(
+                    mood: reactionEngine.mood,
+                    token: reactionEngine.reactionToken,
+                    reduceMotion: player.reduceMotion
+                )
+            }
+            panel?.orderFrontRegardless()
         } else {
-            panel.orderOut(nil)
+            player.stop()
+            panel?.orderOut(nil)
         }
     }
 
@@ -90,6 +101,7 @@ final class PetOverlayManager: NSObject, ObservableObject {
         let engine = reactionEngine ?? PetReactionEngine()
         return NSHostingView(
             rootView: PetOverlayView(
+                player: player,
                 petName: petName,
                 onDragChanged: { [weak self] translation in self?.movePanel(by: translation) },
                 onDragEnded: { [weak self] in self?.finishDrag() },
@@ -237,6 +249,7 @@ private struct PetOverlayView: View {
     @Environment(PetReactionEngine.self) private var reactionEngine
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    let player: PetFramePlayer
     let petName: String
     let onDragChanged: (CGSize) -> Void
     let onDragEnded: () -> Void
@@ -258,7 +271,7 @@ private struct PetOverlayView: View {
                     .offset(y: -150)
                     .accessibilityHidden(true)
             }
-            Image("redpanda-idle")
+            Image(player.currentAssetName)
                 .resizable()
                 .scaledToFit()
                 .frame(width: PetOverlayManager.petRect.width, height: PetOverlayManager.petRect.height)
@@ -285,7 +298,29 @@ private struct PetOverlayView: View {
                 .accessibilityAction(.default, onPetClicked)
         }
         .frame(width: PetOverlayManager.panelSize.width, height: PetOverlayManager.panelSize.height, alignment: .bottom)
+        .onAppear {
+            updatePlayer()
+        }
+        .onChange(of: reactionEngine.reactionToken) {
+            updatePlayer()
+        }
+        .onChange(of: reduceMotion) {
+            updatePlayer()
+        }
+        .onDisappear {
+            // A hidden pet must not keep a timing task alive. Plan.md §3E:
+            // discard transient reactions while hidden, resume idle when shown.
+            player.stop()
+        }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: reactionEngine.reactionToken)
+    }
+
+    private func updatePlayer() {
+        player.update(
+            mood: reactionEngine.mood,
+            token: reactionEngine.reactionToken,
+            reduceMotion: reduceMotion
+        )
     }
 
     private var moodName: String {
