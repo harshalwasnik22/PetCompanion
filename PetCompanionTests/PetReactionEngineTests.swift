@@ -56,4 +56,44 @@ struct PetReactionEngineTests {
         #expect(engine.mood == .happy)
         #expect(engine.reactionToken == greetingToken)
     }
+
+    @Test func discardingTransientReactionReturnsCompletionToIdle() {
+        let engine = PetReactionEngine()
+        engine.show(event: .onTaskCompleted)
+
+        engine.discardTransientReaction()
+
+        #expect(engine.mood == .idle)
+        #expect(engine.bubble == nil)
+        #expect(engine.priority == 0)
+    }
+
+    @Test func discardingTransientReactionReturnsReminderToIdle() {
+        let engine = PetReactionEngine()
+        engine.show(event: .onReminderDue(count: 1))
+
+        engine.discardTransientReaction()
+
+        #expect(engine.mood == .idle)
+        #expect(engine.bubble == nil)
+        #expect(engine.priority == 0)
+    }
+
+    @Test func discardingTransientReactionKeepsDraggedPose() {
+        let engine = PetReactionEngine()
+        engine.show(event: .onPetDragged(isDragging: true))
+
+        engine.discardTransientReaction()
+
+        #expect(engine.mood == .dragged)
+    }
+
+    @Test func discardingTransientReactionDoesNothingWhileIdle() {
+        let engine = PetReactionEngine()
+        let initialToken = engine.reactionToken
+
+        engine.discardTransientReaction()
+
+        #expect(engine.reactionToken == initialToken)
+    }
 }

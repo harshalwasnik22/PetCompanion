@@ -87,6 +87,7 @@ final class PetOverlayManager: NSObject, ObservableObject {
             panel?.orderFrontRegardless()
         } else {
             player.stop()
+            reactionEngine?.discardTransientReaction()
             panel?.orderOut(nil)
         }
     }
