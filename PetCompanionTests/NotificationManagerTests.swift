@@ -63,6 +63,65 @@ import UserNotifications
 }
 
 @MainActor
+@Test func foregroundTaskReminderRoutesToRemindingReactionAndPresentsBannerAndSound() async {
+    let engine = PetReactionEngine()
+    let manager = NotificationManager(
+        center: FakeNotificationCenter(),
+        foregroundReminderCoalescingWindow: .zero
+    )
+    manager.setReactionEngine(engine)
+
+    let options = manager.willPresent(
+        notificationIdentifier: NotificationManager.notificationIdentifier(for: UUID())
+    )
+    await waitForReminderReaction(engine)
+
+    #expect(options == [.banner, .sound])
+    #expect(engine.mood == .reminding)
+    #expect(engine.bubble == "Psst—time for your task!")
+    #expect(engine.priority == 100)
+}
+
+@MainActor
+@Test func concurrentForegroundTaskRemindersCoalesceToOneCountBasedReactionAndEachPresents() async {
+    let engine = PetReactionEngine()
+    let manager = NotificationManager(
+        center: FakeNotificationCenter(),
+        foregroundReminderCoalescingWindow: .zero
+    )
+    manager.setReactionEngine(engine)
+
+    let options = (0..<3).map { _ in
+        manager.willPresent(notificationIdentifier: NotificationManager.notificationIdentifier(for: UUID()))
+    }
+    await waitForReminderReaction(engine)
+
+    #expect(options == Array(repeating: [.banner, .sound], count: 3))
+    #expect(engine.mood == .reminding)
+    #expect(engine.bubble == "You have 3 reminders.")
+}
+
+@MainActor
+@Test func foregroundReminderInterruptsTaskAddedFeedbackAndBlocksLaterClickFeedback() async {
+    let engine = PetReactionEngine()
+    engine.show(event: .onTaskAdded)
+    let manager = NotificationManager(
+        center: FakeNotificationCenter(),
+        foregroundReminderCoalescingWindow: .zero
+    )
+    manager.setReactionEngine(engine)
+
+    _ = manager.willPresent(notificationIdentifier: NotificationManager.notificationIdentifier(for: UUID()))
+    await waitForReminderReaction(engine)
+    let reminderToken = engine.reactionToken
+    engine.show(event: .onPetClicked)
+
+    #expect(engine.mood == .reminding)
+    #expect(engine.priority == 100)
+    #expect(engine.reactionToken == reminderToken)
+}
+
+@MainActor
 @Test func schedulerCreatesANonRepeatingCategorizedRequest() async throws {
     let center = FakeNotificationCenter()
     let scheduler = ReminderScheduler(center: center)
@@ -361,5 +420,12 @@ private final class FakeNotificationCenter: NotificationCenterClient {
     func pendingRequestIdentifiers() async -> [String] {
         duringPendingLookup?()
         return pendingRequests.keys.sorted()
+    }
+}
+
+@MainActor
+private func waitForReminderReaction(_ engine: PetReactionEngine, iterations: Int = 1_000) async {
+    for _ in 0..<iterations where engine.priority != 100 {
+        await Task.yield()
     }
 }

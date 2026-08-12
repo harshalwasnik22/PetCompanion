@@ -120,6 +120,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.taskManager = taskManager
         super.init()
         notificationManager.setTaskManager(taskManager)
+        notificationManager.setReactionEngine(reactionEngine)
         overlayManager.configure(
             reactionEngine: reactionEngine,
             petName: appSettings.petName,
