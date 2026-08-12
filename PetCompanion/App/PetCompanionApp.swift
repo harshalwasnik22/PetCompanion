@@ -97,21 +97,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var captureController: QuickCaptureController?
     let reactionEngine: PetReactionEngine
     let notificationManager: NotificationManager
+    private let taskManager: TaskManager?
 
     override init() {
         let store = Result { try AppModelContainer.make() }
         let reactionEngine = PetReactionEngine()
+        let notificationManager = NotificationManager()
         let taskManager: TaskManager?
         switch store {
         case .success(let container):
-            taskManager = TaskManager(modelContext: container.mainContext, reactionEngine: reactionEngine)
+            taskManager = TaskManager(
+                modelContext: container.mainContext,
+                reactionEngine: reactionEngine,
+                notificationManager: notificationManager
+            )
         case .failure:
             taskManager = nil
         }
         self.store = store
         self.reactionEngine = reactionEngine
-        self.notificationManager = NotificationManager(taskManager: taskManager)
+        self.notificationManager = notificationManager
+        self.taskManager = taskManager
         super.init()
+        notificationManager.setTaskManager(taskManager)
         overlayManager.configure(
             reactionEngine: reactionEngine,
             petName: appSettings.petName,
@@ -121,6 +129,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         notificationManager.registerCategory()
+        Task { await taskManager?.rescheduleFutureReminders() }
         overlayManager.start()
         if case .success(let container) = store {
             _ = quickCaptureController(for: container)

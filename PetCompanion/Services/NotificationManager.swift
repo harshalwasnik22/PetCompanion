@@ -7,6 +7,9 @@ protocol NotificationCenterClient: AnyObject {
     func setNotificationCategories(_ categories: Set<UNNotificationCategory>)
     func authorizationStatus() async -> UNAuthorizationStatus
     func requestAuthorization(options: UNAuthorizationOptions) async throws -> Bool
+    func add(request: UNNotificationRequest)
+    func removePendingRequests(identifiers: [String])
+    func pendingRequestIdentifiers() async -> [String]
 }
 
 extension UNUserNotificationCenter: NotificationCenterClient {
@@ -16,6 +19,18 @@ extension UNUserNotificationCenter: NotificationCenterClient {
 
     func authorizationStatus() async -> UNAuthorizationStatus {
         await notificationSettings().authorizationStatus
+    }
+
+    func add(request: UNNotificationRequest) {
+        add(request) { _ in }
+    }
+
+    func removePendingRequests(identifiers: [String]) {
+        removePendingNotificationRequests(withIdentifiers: identifiers)
+    }
+
+    func pendingRequestIdentifiers() async -> [String] {
+        await pendingNotificationRequests().map(\.identifier)
     }
 }
 
@@ -29,7 +44,8 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     nonisolated private static let notificationPrefix = "task-reminder-"
 
     private let center: any NotificationCenterClient
-    private let taskManager: TaskManager?
+    private var taskManager: TaskManager?
+    let reminderScheduler: ReminderScheduler
     var openTasks: () -> Void = {}
 
     init(
@@ -37,6 +53,11 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         taskManager: TaskManager? = nil
     ) {
         self.center = center
+        self.taskManager = taskManager
+        self.reminderScheduler = ReminderScheduler(center: center)
+    }
+
+    func setTaskManager(_ taskManager: TaskManager?) {
         self.taskManager = taskManager
     }
 
@@ -59,7 +80,12 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     func requestAuthorizationForReminder() {
         Task {
             guard await center.authorizationStatus() == .notDetermined else { return }
-            _ = try? await center.requestAuthorization(options: [.alert, .sound])
+            guard (try? await center.requestAuthorization(options: [.alert, .sound])) == true else { return }
+            // The reminder that triggered this prompt was scheduled before
+            // permission resolved, so its `add` was rejected. Reconciling here
+            // means the first reminder a user ever sets still fires, instead of
+            // waiting for the next launch to heal it.
+            await taskManager?.rescheduleFutureReminders()
         }
     }
 

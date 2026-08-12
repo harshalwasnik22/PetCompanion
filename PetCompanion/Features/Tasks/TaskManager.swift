@@ -32,13 +32,15 @@ final class TaskManager {
     func create(title: String, notes: String, dueAt: Date?, reminderAt: Date?, now: Date = .now) throws {
         let input = try validatedInput(title: title, notes: notes)
         try validate(reminderAt: reminderAt, now: now)
-        modelContext.insert(TaskItem(
+        let task = TaskItem(
             title: input.title,
             notes: input.notes,
             dueAt: dueAt,
             reminderAt: reminderAt
-        ))
+        )
+        modelContext.insert(task)
         try save()
+        notificationManager?.reminderScheduler.schedule(task, now: now)
         reactionEngine.show(event: .onTaskAdded)
         if reminderAt != nil { notificationManager?.requestAuthorizationForReminder() }
     }
@@ -61,6 +63,11 @@ final class TaskManager {
         task.dueAt = dueAt
         task.reminderAt = reminderAt
         try save()
+        if let reminderAt, reminderAt > now {
+            notificationManager?.reminderScheduler.schedule(task, now: now)
+        } else {
+            notificationManager?.reminderScheduler.cancel(for: task.id)
+        }
         if reminderAt != nil { notificationManager?.requestAuthorizationForReminder() }
     }
 
@@ -69,6 +76,7 @@ final class TaskManager {
         task.status = .completed
         task.completedAt = .now
         try save()
+        notificationManager?.reminderScheduler.cancel(for: task.id)
         reactionEngine.show(event: .onTaskCompleted)
     }
 
@@ -79,8 +87,30 @@ final class TaskManager {
     }
 
     func delete(_ task: TaskItem) throws {
+        // SwiftData may invalidate the model once the delete is saved, so the
+        // identifier has to be read while the object is still valid.
+        let taskID = task.id
         modelContext.delete(task)
         try save()
+        notificationManager?.reminderScheduler.cancel(for: taskID)
+    }
+
+    /// Re-adds every future reminder and clears the rest. `add` with an existing
+    /// identifier replaces rather than duplicates, so running this at launch — and
+    /// again once permission is granted — is safe, and it restores requests that
+    /// were dropped while permission was denied.
+    ///
+    /// The pending/future filtering happens in Swift rather than the predicate:
+    /// `#Predicate` cannot compare a stored enum, and a personal task list is far
+    /// too small for the round trip to matter.
+    func rescheduleFutureReminders(now: Date = .now) async {
+        guard let scheduler = notificationManager?.reminderScheduler else { return }
+        // Read the pending requests before fetching, so that nothing can be
+        // deleted between fetching the models and acting on them.
+        let pending = await scheduler.pendingTaskReminderIdentifiers()
+        let descriptor = FetchDescriptor<TaskItem>(predicate: #Predicate { $0.reminderAt != nil })
+        guard let tasks = try? modelContext.fetch(descriptor) else { return }
+        scheduler.reconcile(tasks, pending: pending, now: now)
     }
 
     private func validatedInput(title: String, notes: String) throws -> (title: String, notes: String?) {
