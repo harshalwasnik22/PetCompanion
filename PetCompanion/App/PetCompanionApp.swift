@@ -120,7 +120,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         notificationManager.registerCategory()
-        taskManager?.rescheduleFutureReminders()
+        Task { await taskManager?.rescheduleFutureReminders() }
         overlayManager.start()
     }
 

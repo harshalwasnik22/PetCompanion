@@ -219,19 +219,82 @@ import UserNotifications
     context.insert(TaskItem(title: "Done", status: .completed, reminderAt: now.addingTimeInterval(60)))
     try context.save()
 
-    manager.rescheduleFutureReminders(now: now)
+    await manager.rescheduleFutureReminders(now: now)
     let identifier = NotificationManager.notificationIdentifier(for: futureTask.id)
     #expect(await center.pendingRequestIdentifiers().isEmpty)
 
     center.status = .authorized
-    manager.rescheduleFutureReminders(now: now)
+    await manager.rescheduleFutureReminders(now: now)
     #expect(await center.pendingRequestIdentifiers() == [identifier])
     #expect(center.addedIdentifiers == [identifier, identifier])
 }
 
 @MainActor
+@Test func reconciliationRemovesRequestsWhoseTaskIsGoneOrDone() async throws {
+    let center = FakeNotificationCenter()
+    let notificationManager = NotificationManager(center: center)
+    let context = ModelContext(try AppModelContainer.make(inMemory: true))
+    let manager = TaskManager(
+        modelContext: context,
+        reactionEngine: PetReactionEngine(),
+        notificationManager: notificationManager
+    )
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    let survivor = TaskItem(title: "Survivor", reminderAt: now.addingTimeInterval(60))
+    context.insert(survivor)
+    try context.save()
+    notificationManager.reminderScheduler.schedule(survivor, now: now)
+
+    // Stands in for a crash between saving a delete and cancelling its request.
+    let orphanIdentifier = NotificationManager.notificationIdentifier(for: UUID())
+    center.add(request: UNNotificationRequest(
+        identifier: orphanIdentifier,
+        content: UNMutableNotificationContent(),
+        trigger: nil
+    ))
+    let foreignIdentifier = "habit-streak-1"
+    center.add(request: UNNotificationRequest(
+        identifier: foreignIdentifier,
+        content: UNMutableNotificationContent(),
+        trigger: nil
+    ))
+
+    await manager.rescheduleFutureReminders(now: now)
+
+    let survivorIdentifier = NotificationManager.notificationIdentifier(for: survivor.id)
+    #expect(await center.pendingRequestIdentifiers() == [foreignIdentifier, survivorIdentifier].sorted())
+    #expect(center.removedIdentifiers == [orphanIdentifier])
+}
+
+@MainActor
+@Test func grantingAuthorizationReschedulesTheReminderThatPromptedIt() async throws {
+    let center = FakeNotificationCenter(status: .notDetermined)
+    center.authorizationGrant = true
+    let notificationManager = NotificationManager(center: center)
+    let context = ModelContext(try AppModelContainer.make(inMemory: true))
+    let manager = TaskManager(
+        modelContext: context,
+        reactionEngine: PetReactionEngine(),
+        notificationManager: notificationManager
+    )
+    notificationManager.setTaskManager(manager)
+    let now = Date.now.addingTimeInterval(60)
+
+    try manager.create(title: "Feed Momo", notes: "", dueAt: nil, reminderAt: now)
+    let task = try #require(context.fetch(FetchDescriptor<TaskItem>()).first)
+    let identifier = NotificationManager.notificationIdentifier(for: task.id)
+
+    // The `add` during `create` was rejected because permission had not resolved.
+    #expect(await center.pendingRequestIdentifiers().isEmpty)
+
+    await center.waitForAdds(2)
+    #expect(await center.pendingRequestIdentifiers() == [identifier])
+}
+
+@MainActor
 private final class FakeNotificationCenter: NotificationCenterClient {
     var status: UNAuthorizationStatus
+    var authorizationGrant = false
     private(set) var addedIdentifiers: [String] = []
     private(set) var removedIdentifiers: [String] = []
     private(set) var pendingRequests: [String: UNNotificationRequest] = [:]
@@ -243,11 +306,24 @@ private final class FakeNotificationCenter: NotificationCenterClient {
     func setDelegate(_ delegate: (any UNUserNotificationCenterDelegate)?) {}
     func setNotificationCategories(_ categories: Set<UNNotificationCategory>) {}
     func authorizationStatus() async -> UNAuthorizationStatus { status }
-    func requestAuthorization(options: UNAuthorizationOptions) async throws -> Bool { false }
+    func requestAuthorization(options: UNAuthorizationOptions) async throws -> Bool {
+        guard authorizationGrant else { return false }
+        status = .authorized
+        return true
+    }
     func add(request: UNNotificationRequest) {
         addedIdentifiers.append(request.identifier)
         guard status == .authorized else { return }
         pendingRequests[request.identifier] = request
+    }
+
+    /// Yields until `count` adds have been recorded. `requestAuthorizationForReminder`
+    /// reschedules on a detached `Task`, so the effect lands after an await rather
+    /// than inline. Bounded so a regression fails the expectation instead of hanging.
+    func waitForAdds(_ count: Int, iterations: Int = 1_000) async {
+        for _ in 0..<iterations where addedIdentifiers.count < count {
+            await Task.yield()
+        }
     }
     func removePendingRequests(identifiers: [String]) {
         removedIdentifiers.append(contentsOf: identifiers)

@@ -80,7 +80,12 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     func requestAuthorizationForReminder() {
         Task {
             guard await center.authorizationStatus() == .notDetermined else { return }
-            _ = try? await center.requestAuthorization(options: [.alert, .sound])
+            guard (try? await center.requestAuthorization(options: [.alert, .sound])) == true else { return }
+            // The reminder that triggered this prompt was scheduled before
+            // permission resolved, so its `add` was rejected. Reconciling here
+            // means the first reminder a user ever sets still fires, instead of
+            // waiting for the next launch to heal it.
+            await taskManager?.rescheduleFutureReminders()
         }
     }
 
