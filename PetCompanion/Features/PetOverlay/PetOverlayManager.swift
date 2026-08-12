@@ -243,6 +243,11 @@ private struct PetOverlayView: View {
     let onPetClicked: () -> Void
 
     @State private var lastTranslation: CGSize = .zero
+    /// Production resolution asks the asset catalog directly. Tests never reach
+    /// this closure; they inject a known name set instead.
+    @State private var player = PetFramePlayer(
+        resolver: PetFrameResolver(exists: { NSImage(named: $0) != nil })
+    )
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -258,7 +263,7 @@ private struct PetOverlayView: View {
                     .offset(y: -150)
                     .accessibilityHidden(true)
             }
-            Image("redpanda-idle")
+            Image(player.currentAssetName)
                 .resizable()
                 .scaledToFit()
                 .frame(width: PetOverlayManager.petRect.width, height: PetOverlayManager.petRect.height)
@@ -285,6 +290,25 @@ private struct PetOverlayView: View {
                 .accessibilityAction(.default, onPetClicked)
         }
         .frame(width: PetOverlayManager.panelSize.width, height: PetOverlayManager.panelSize.height, alignment: .bottom)
+        .onAppear {
+            player.update(
+                mood: reactionEngine.mood,
+                token: reactionEngine.reactionToken,
+                reduceMotion: reduceMotion
+            )
+        }
+        .onChange(of: reactionEngine.reactionToken) {
+            player.update(
+                mood: reactionEngine.mood,
+                token: reactionEngine.reactionToken,
+                reduceMotion: reduceMotion
+            )
+        }
+        .onDisappear {
+            // A hidden pet must not keep a timing task alive. Plan.md §3E:
+            // discard transient reactions while hidden, resume idle when shown.
+            player.stop()
+        }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: reactionEngine.reactionToken)
     }
 

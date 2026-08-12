@@ -25,3 +25,10 @@ These checks require a signed-in desktop session and, where noted, physical mult
 ## Distribution note
 
 This is a local development archive, not a notarized or redistributable build. Its ad-hoc signature is suitable for running on the development Mac only.
+
+## Pet frame animation
+
+1. At rest, the pet plays its idle animation.
+2. Completing a task plays the reaction animation, then returns to idle.
+3. Dragging holds a single pose.
+4. With Reduce Motion enabled, frames stop but mood still changes the image.
