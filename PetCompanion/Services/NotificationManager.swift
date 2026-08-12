@@ -7,6 +7,9 @@ protocol NotificationCenterClient: AnyObject {
     func setNotificationCategories(_ categories: Set<UNNotificationCategory>)
     func authorizationStatus() async -> UNAuthorizationStatus
     func requestAuthorization(options: UNAuthorizationOptions) async throws -> Bool
+    func add(request: UNNotificationRequest)
+    func removePendingRequests(identifiers: [String])
+    func pendingRequestIdentifiers() async -> [String]
 }
 
 extension UNUserNotificationCenter: NotificationCenterClient {
@@ -16,6 +19,18 @@ extension UNUserNotificationCenter: NotificationCenterClient {
 
     func authorizationStatus() async -> UNAuthorizationStatus {
         await notificationSettings().authorizationStatus
+    }
+
+    func add(request: UNNotificationRequest) {
+        add(request) { _ in }
+    }
+
+    func removePendingRequests(identifiers: [String]) {
+        removePendingNotificationRequests(withIdentifiers: identifiers)
+    }
+
+    func pendingRequestIdentifiers() async -> [String] {
+        await pendingNotificationRequests().map(\.identifier)
     }
 }
 
@@ -29,7 +44,8 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     nonisolated private static let notificationPrefix = "task-reminder-"
 
     private let center: any NotificationCenterClient
-    private let taskManager: TaskManager?
+    private var taskManager: TaskManager?
+    let reminderScheduler: ReminderScheduler
     var openTasks: () -> Void = {}
 
     init(
@@ -37,6 +53,11 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         taskManager: TaskManager? = nil
     ) {
         self.center = center
+        self.taskManager = taskManager
+        self.reminderScheduler = ReminderScheduler(center: center)
+    }
+
+    func setTaskManager(_ taskManager: TaskManager?) {
         self.taskManager = taskManager
     }
 
