@@ -35,19 +35,29 @@ final class ReminderScheduler {
         center.removePendingRequests(identifiers: [NotificationManager.notificationIdentifier(for: taskID)])
     }
 
+    /// Only the reminders this app owns. Identifiers belonging to anything else
+    /// are filtered out here so `reconcile` can never remove them.
+    func pendingTaskReminderIdentifiers() async -> [String] {
+        await center.pendingRequestIdentifiers().filter { NotificationManager.taskID(from: $0) != nil }
+    }
+
     /// Restores every eligible reminder and drops requests whose task is gone,
     /// completed, or past. Removal matters as much as adding: the database
     /// change is saved before the request is cancelled, so a crash in that
     /// window would otherwise leave a notification firing forever for a task
     /// that no longer exists.
-    func reconcile(_ tasks: [TaskItem], now: Date = .now) async {
+    ///
+    /// Deliberately synchronous. It reads SwiftData models, and any suspension
+    /// between fetching them and acting on them lets a delete or completion land
+    /// in between — which would re-add the orphan this method exists to remove,
+    /// or trap on an invalidated model. Callers await
+    /// `pendingTaskReminderIdentifiers` *first*, then fetch, then call this.
+    func reconcile(_ tasks: [TaskItem], pending: [String], now: Date = .now) {
         let wanted = Set(
             tasks.filter { isEligible($0, now: now) }
                 .map { NotificationManager.notificationIdentifier(for: $0.id) }
         )
-        let stale = await center.pendingRequestIdentifiers().filter {
-            NotificationManager.taskID(from: $0) != nil && !wanted.contains($0)
-        }
+        let stale = pending.filter { !wanted.contains($0) }
         if !stale.isEmpty {
             center.removePendingRequests(identifiers: stale)
         }

@@ -104,9 +104,13 @@ final class TaskManager {
     /// `#Predicate` cannot compare a stored enum, and a personal task list is far
     /// too small for the round trip to matter.
     func rescheduleFutureReminders(now: Date = .now) async {
+        guard let scheduler = notificationManager?.reminderScheduler else { return }
+        // Read the pending requests before fetching, so that nothing can be
+        // deleted between fetching the models and acting on them.
+        let pending = await scheduler.pendingTaskReminderIdentifiers()
         let descriptor = FetchDescriptor<TaskItem>(predicate: #Predicate { $0.reminderAt != nil })
         guard let tasks = try? modelContext.fetch(descriptor) else { return }
-        await notificationManager?.reminderScheduler.reconcile(tasks, now: now)
+        scheduler.reconcile(tasks, pending: pending, now: now)
     }
 
     private func validatedInput(title: String, notes: String) throws -> (title: String, notes: String?) {

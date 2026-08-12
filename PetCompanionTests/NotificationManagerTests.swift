@@ -267,6 +267,32 @@ import UserNotifications
 }
 
 @MainActor
+@Test func reconciliationDoesNotResurrectATaskDeletedWhileItRan() async throws {
+    let center = FakeNotificationCenter()
+    let notificationManager = NotificationManager(center: center)
+    let context = ModelContext(try AppModelContainer.make(inMemory: true))
+    let manager = TaskManager(
+        modelContext: context,
+        reactionEngine: PetReactionEngine(),
+        notificationManager: notificationManager
+    )
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    let doomed = TaskItem(title: "Doomed", reminderAt: now.addingTimeInterval(60))
+    context.insert(doomed)
+    try context.save()
+    notificationManager.reminderScheduler.schedule(doomed, now: now)
+    let identifier = NotificationManager.notificationIdentifier(for: doomed.id)
+    #expect(await center.pendingRequestIdentifiers() == [identifier])
+
+    // Deletes the task inside reconciliation's only suspension point.
+    center.duringPendingLookup = { try? manager.delete(doomed) }
+    await manager.rescheduleFutureReminders(now: now)
+    center.duringPendingLookup = nil
+
+    #expect(await center.pendingRequestIdentifiers().isEmpty)
+}
+
+@MainActor
 @Test func grantingAuthorizationReschedulesTheReminderThatPromptedIt() async throws {
     let center = FakeNotificationCenter(status: .notDetermined)
     center.authorizationGrant = true
@@ -298,6 +324,9 @@ private final class FakeNotificationCenter: NotificationCenterClient {
     private(set) var addedIdentifiers: [String] = []
     private(set) var removedIdentifiers: [String] = []
     private(set) var pendingRequests: [String: UNNotificationRequest] = [:]
+    /// Runs inside `pendingRequestIdentifiers`, letting a test land a mutation in
+    /// the one suspension point reconciliation has.
+    var duringPendingLookup: (() -> Void)?
 
     init(status: UNAuthorizationStatus = .authorized) {
         self.status = status
@@ -330,6 +359,7 @@ private final class FakeNotificationCenter: NotificationCenterClient {
         identifiers.forEach { pendingRequests.removeValue(forKey: $0) }
     }
     func pendingRequestIdentifiers() async -> [String] {
-        pendingRequests.keys.sorted()
+        duringPendingLookup?()
+        return pendingRequests.keys.sorted()
     }
 }
